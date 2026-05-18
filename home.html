@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Home - POI</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="dashboard-layout">
+
+    <nav class="side-menu">
+        <div class="menu-item active">🏠</div>
+        <div class="menu-item"><a href="chat.html">💬</a></div>
+        <div class="menu-item">🏆</div>
+    </nav>
+
+    <main class="main-content">
+        <header class="top-bar">
+            <h1>Home</h1>
+            <div class="user-avatar-small">👤</div>
+        </header>
+
+        <section class="profile-card">
+            <div class="avatar-large">👤</div>
+            <div class="profile-info">
+                <h2 id="nombreUsuario">...</h2>
+                <p class="rank">JUGADOR TITULAR</p>
+                <div class="level-container">
+                    <span id="nivelUsuario">Nivel -</span>
+                    <span id="expUsuario">- Total EXP</span>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill" style="width: 0%;"></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <div class="dashboard-grid">
+            <section class="card achievements">
+                <h3>Mis Logros</h3>
+                <div class="medals-row">
+                    <span>🏅</span> <span>🥇</span> <span>🛡️</span> <span>🎖️</span>
+                </div>
+                <div class="stats-row">
+                    <p>Tareas completadas: <strong>16</strong></p>
+                    <p>Recompensas obtenidas: <strong>20</strong></p>
+                </div>
+            </section>
+
+            <section class="card tasks">
+                <h3>Tareas</h3>
+                <ul class="task-list">
+                    <li><input type="checkbox" checked> Tarea semanal (+100 EXP)</li>
+                    <li><input type="checkbox" checked> Terminar pendientes (+5 EXP)</li>
+                    <li><input type="checkbox" checked> Arreglar la interfaz (+5 EXP)</li>
+                    <li class="next-task">Próxima Tarea Diaria (18hrs)</li>
+                </ul>
+            </section>
+        </div>
+    </main>
+
+    <script>
+        // 🔒 Proteger ruta — si no hay sesión, redirigir al login
+        const usuario = JSON.parse(localStorage.getItem("usuario"));
+        if (!usuario) {
+            window.location.href = "index.html";
+        } else {
+            // Rellenar datos del usuario
+            document.getElementById("nombreUsuario").innerText = usuario.nombre;
+            document.getElementById("nivelUsuario").innerText = "Nivel " + usuario.nivel;
+            document.getElementById("expUsuario").innerText = usuario.exp + " Total EXP";
+
+            // Barra de progreso (exp % 100 como ejemplo simple)
+            const porcentaje = usuario.exp % 100;
+            document.getElementById("progressFill").style.width = porcentaje + "%";
+        }
+    </script>
+
+</body>
+</html>

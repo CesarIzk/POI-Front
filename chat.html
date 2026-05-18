@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat - POI</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="chat-layout">
+
+    <nav class="side-menu">
+        <div class="menu-item"><a href="home.html">🏠</a></div>
+        <div class="menu-item active">💬</div>
+        <div class="menu-item">🏆</div>
+    </nav>
+
+    <aside class="chats-sidebar">
+        <h2>Chats</h2>
+        <div id="chatList"></div>
+    </aside>
+
+    <main class="chat-window">
+        <header class="chat-header">
+            <h3 id="chatTitle">Selecciona un chat</h3>
+            <div class="header-actions">📞 🎥</div>
+        </header>
+
+        <div class="messages-area" id="messages"></div>
+
+        <footer class="input-area">
+            <form id="chatForm">
+                <input type="text" id="mensajeInput" placeholder="Escribe tu mensaje..." required>
+            </form>
+        </footer>
+    </main>
+
+    <aside class="info-sidebar">
+        <div class="side-card">
+            <h3>Tareas (POI)</h3>
+            <ul>
+                <li><input type="checkbox" checked> Tarea semanal (+100)</li>
+                <li><input type="checkbox" checked> Terminar pendientes (+5)</li>
+                <li><input type="checkbox" checked> Arreglar interfaz (+5)</li>
+            </ul>
+        </div>
+        <div class="side-card">
+            <h3>Nivel</h3>
+            <p id="nivelSidebar">...</p>
+            <div class="progress-bar"><div class="progress-fill"></div></div>
+            <div class="badge">LIGA PROFESIONAL ⚽</div>
+        </div>
+    </aside>
+
+    <script>
+        // 🔒 Proteger ruta
+        const usuario = JSON.parse(localStorage.getItem("usuario"));
+        if (!usuario) {
+            window.location.href = "index.html";
+        } else {
+            // Exponer usuarioId globalmente para chat.js
+            window.usuarioId = usuario.id;
+            document.getElementById("nivelSidebar").innerText = usuario.nombre + " - Nivel " + usuario.nivel;
+        }
+    </script>
+
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script src="js/chat.js"></script>
+
+</body>
+</html>

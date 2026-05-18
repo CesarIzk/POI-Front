@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crea tu cuenta - POI</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="login-container">
+    <h1>Crea tu cuenta</h1>
+
+    <form id="registerForm">
+        <div>
+            <label>Nombre</label>
+            <input type="text" id="nombre">
+        </div>
+
+        <div>
+            <label>Alias</label>
+            <input type="text" id="alias">
+        </div>
+
+        <div>
+            <label>Teléfono</label>
+            <input type="text" id="telefono">
+        </div>
+
+        <div class="input-group">
+            <label>Correo</label>
+            <input type="text" id="email">
+        </div>
+
+        <div class="input-group">
+            <label>Contraseña</label>
+            <input type="password" id="password">
+        </div>
+
+        <div class="input-group">
+            <label>Confirmar contraseña</label>
+            <input type="password" id="confirm">
+        </div>
+
+        <button type="submit">Crear cuenta</button>
+
+        <p id="mensaje"></p>
+    </form>
+</div>
+
+<script src="js/register.js"></script>
+</body>
+</html>
