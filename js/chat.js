@@ -1,5 +1,5 @@
 // 🔧 Cambia esta URL por la de tu backend en Railway
-const API_URL = "https://tu-app.up.railway.app";
+const API_URL = "https://poi-back-production.up.railway.app";
 
 const socket = io(API_URL);
 
