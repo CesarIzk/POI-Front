@@ -1,5 +1,5 @@
 // 🔧 Cambia esta URL por la de tu backend en Railway
-const API_URL = "https://overbitterly-convoluted-katharina.ngrok-free.app";
+const API_URL = "https://overbitterly-convoluted-katharina.ngrok-free.dev";
 
 document.getElementById("registerForm").addEventListener("submit", async (e) => {
     e.preventDefault();
