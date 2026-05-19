@@ -1,5 +1,5 @@
 // 🔧 Cambia esta URL por la de tu backend en Railway
-const API_URL = "https://overbitterly-convuluted-katharina.ngrok-fr-";
+const API_URL = "https://overbitterly-convuluted-katharina.ngrok-free.app";
 
 const socket = io(API_URL);
 
