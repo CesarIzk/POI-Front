@@ -2,6 +2,7 @@
 const API_URL = "https://poi-back-production.up.railway.app";
 
 const socket = io(API_URL);
+window.socket = socket; // exponer para videocall.js
 
 const chatList = document.getElementById("chatList");
 const messagesDiv = document.getElementById("messages");
