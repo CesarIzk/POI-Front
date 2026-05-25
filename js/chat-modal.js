@@ -144,9 +144,9 @@ async function crearChatConUsuario() {
     try {
         const token = localStorage.getItem("token");
 
-        // Solo enviamos `nombre` — el backend (SP_CrearChat) no acepta usuarioDestino
-        // Si en el futuro quieres agregar participantes, hazlo en una llamada separada
+        // Enviamos nombre y el usuario destino si fue seleccionado
         const body = { nombre };
+        if (usuarioSeleccionado) body.usuarioDestino = usuarioSeleccionado.id;
 
         const res = await fetch(API_URL + "/api/chats", {
             method: "POST",
