@@ -20,21 +20,26 @@ function initDOM() {
     videoStatus   = document.getElementById("videoStatus");
 }
 
-// ─── Obtener ICE servers desde el backend ─────────────────
 async function obtenerIceServers() {
     try {
         const res = await fetch(`${API_URL}/api/turn-credentials`, {
             headers: { Authorization: "Bearer " + localStorage.getItem("token") }
         });
         const data = await res.json();
-        return data.iceServers;
+        // Validar que cada server tenga urls válido
+        const valid = data.iceServers.filter(s => s.urls && !String(s.urls).includes("undefined"));
+        return valid.length > 0 ? valid : fallbackIce();
     } catch (e) {
-        console.warn("⚠ No se pudo obtener TURN, usando solo STUN:", e.message);
-        return [
-            { urls: "stun:stun.l.google.com:19302" },
-            { urls: "stun:stun1.l.google.com:19302" }
-        ];
+        console.warn("⚠ No se pudo obtener TURN:", e.message);
+        return fallbackIce();
     }
+}
+
+function fallbackIce() {
+    return [
+        { urls: "stun:stun.l.google.com:19302" },
+        { urls: "stun:stun1.l.google.com:19302" }
+    ];
 }
 
 // ─── Helper: obtener stream con fallback ───────────────────
