@@ -6,6 +6,7 @@
     <title>Chat - POI</title>
     <link rel="stylesheet" href="css/style.css">
     <style>
+        /* ── Sidebar header ── */
         .sidebar-header {
             display: flex;
             align-items: center;
@@ -14,46 +15,189 @@
         }
         .sidebar-header h2 { margin: 0; }
         #btnNuevoChat {
-            width: 32px;
-            height: 32px;
+            width: 32px; height: 32px;
             border-radius: 50%;
             border: none;
             background: #5865f2;
             color: white;
             font-size: 20px;
-            line-height: 1;
             cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            display: flex; align-items: center; justify-content: center;
             transition: background 0.2s, transform 0.15s;
         }
         #btnNuevoChat:hover { background: #4752c4; transform: scale(1.1); }
         #modalNuevoChat.open { display: flex !important; }
+
         .usuario-resultado {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 8px 10px;
-            border-radius: 8px;
-            background: #2a2a3e;
-            cursor: pointer;
+            display: flex; align-items: center; gap: 10px;
+            padding: 8px 10px; border-radius: 8px;
+            background: #2a2a3e; cursor: pointer;
             border: 1px solid transparent;
             transition: border-color 0.15s;
         }
         .usuario-resultado.seleccionado { border-color: #5865f2; }
         .usuario-resultado .avatar {
-            width: 32px; height: 32px;
-            border-radius: 50%;
+            width: 32px; height: 32px; border-radius: 50%;
             background: #5865f2;
             display: flex; align-items: center; justify-content: center;
             font-weight: bold; font-size: 14px;
         }
+
+        /* ── Info sidebar (derecho) — tareas ── */
+        .info-sidebar {
+            width: 220px;
+            min-width: 220px;
+            background: #13141f;
+            border-left: 1px solid #2a2a3e;
+            padding: 20px 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            overflow-y: auto;
+        }
+
+        .side-card {
+            background: #1a1b2e;
+            border: 1px solid #2a2a3e;
+            border-radius: 12px;
+            padding: 14px;
+        }
+
+        .side-card h3 {
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            color: #6b7280;
+            margin: 0 0 12px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .btn-add-task {
+            width: 22px; height: 22px;
+            background: #5865f2;
+            border: none;
+            border-radius: 50%;
+            color: white;
+            font-size: 15px;
+            cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            line-height: 1;
+            transition: background 0.15s, transform 0.15s;
+        }
+        .btn-add-task:hover { background: #4752c4; transform: scale(1.1); }
+
+        #sidebarTaskList {
+            list-style: none;
+            padding: 0; margin: 0;
+        }
+
+        .side-card .progress-bar {
+            height: 5px;
+            background: #2a2a3e;
+            border-radius: 99px;
+            overflow: hidden;
+            margin: 8px 0 4px;
+        }
+        .side-card .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4f8eff, #7c5cfc);
+            border-radius: 99px;
+            transition: width 0.8s ease;
+        }
+        .badge {
+            font-size: 11px;
+            color: #f0b429;
+            margin-top: 4px;
+        }
+
+        /* ── Coach bubble ── */
+        .coach-bubble {
+            background: #1e2a40 !important;
+            border: 1px solid #2d4a7a !important;
+        }
+
+        /* ── Toast tarea ── */
+        #toastTarea {
+            position: fixed;
+            bottom: 24px; right: 24px;
+            background: #1a1e2a;
+            border: 1px solid #252a38;
+            border-left: 3px solid #2ecc71;
+            border-radius: 10px;
+            padding: 12px 18px;
+            font-size: 13px;
+            color: #e8eaf0;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+            transform: translateY(80px);
+            opacity: 0;
+            transition: all 0.35s cubic-bezier(0.34,1.56,0.64,1);
+            z-index: 300;
+            max-width: 300px;
+        }
+        #toastTarea.show { transform: translateY(0); opacity: 1; }
+
+        /* ── Modal nueva tarea ── */
+        #modalNuevaTarea {
+            display: none;
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.75);
+            z-index: 2000;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-tarea-box {
+            background: #1e1e2e;
+            border: 1px solid #444;
+            border-radius: 14px;
+            padding: 28px 28px 24px;
+            width: 340px;
+            color: white;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+        }
+        .modal-tarea-box h3 { margin: 0 0 18px; font-size: 16px; }
+        .modal-tarea-box label {
+            display: block;
+            font-size: 12px; color: #aaa;
+            margin-bottom: 4px; margin-top: 12px;
+        }
+        .modal-tarea-box input {
+            width: 100%; padding: 9px 12px;
+            border-radius: 8px;
+            border: 1px solid #555;
+            background: #12121f;
+            color: white;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        .modal-tarea-row { display: flex; gap: 10px; margin-top: 12px; }
+        .modal-tarea-row > div { flex: 1; }
+        .modal-tarea-actions {
+            display: flex; gap: 10px;
+            justify-content: flex-end;
+            margin-top: 20px;
+        }
+        .btn-cancel {
+            padding: 8px 18px; border-radius: 8px;
+            border: 1px solid #555; background: transparent;
+            color: #aaa; cursor: pointer;
+        }
+        .btn-confirm {
+            padding: 8px 18px; border-radius: 8px;
+            border: none; background: #5865f2;
+            color: white; cursor: pointer; font-weight: bold;
+        }
+        .btn-confirm:hover { background: #4752c4; }
     </style>
 </head>
 <body class="chat-layout">
 
-    <!-- Overlay para cerrar sidebar en móvil -->
+    <!-- Toast nueva tarea -->
+    <div id="toastTarea"></div>
+
+    <!-- Overlay móvil -->
     <div class="sidebar-overlay" id="sidebarOverlay" onclick="cerrarSidebar()"></div>
 
     <nav class="side-menu">
@@ -62,48 +206,35 @@
         <div class="menu-item">🏆</div>
     </nav>
 
+    <!-- Lista de chats -->
     <aside class="chats-sidebar">
         <div class="sidebar-header">
             <h2>Chats</h2>
-            <button id="btnNuevoChat" onclick="abrirModalNuevoChat()" title="Nuevo chat / Agregar amigo">＋</button>
+            <button id="btnNuevoChat" onclick="abrirModalNuevoChat()" title="Nuevo chat">＋</button>
         </div>
         <div id="chatList"></div>
     </aside>
 
-    <!-- Modal: Nuevo chat / Agregar amigo -->
+    <!-- Modal: Nuevo chat -->
     <div id="modalNuevoChat" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:2000; align-items:center; justify-content:center;">
         <div style="background:#1e1e2e; border:1px solid #444; border-radius:14px; padding:28px 32px; width:360px; color:white; box-shadow:0 8px 32px rgba(0,0,0,0.6);">
             <h3 style="margin:0 0 6px; font-size:17px;">➕ Nuevo Chat</h3>
             <p style="margin:0 0 18px; font-size:13px; color:#aaa;">Ponle un nombre al chat y agrega participantes.</p>
 
-            <!-- Nombre del chat -->
             <label style="font-size:12px; color:#aaa; display:block; margin-bottom:4px;">Nombre del chat *</label>
-            <input
-                type="text"
-                id="nombreChatInput"
-                placeholder="Ej: Proyecto, Equipo Alpha..."
-                maxlength="30"
+            <input type="text" id="nombreChatInput" placeholder="Ej: Proyecto, Equipo Alpha..." maxlength="30"
                 style="width:100%; padding:10px 12px; border-radius:8px; border:1px solid #555; background:#12121f; color:white; font-size:14px; box-sizing:border-box; margin-bottom:4px;"
-                oninput="validarFormularioChat()"
-            >
-            <div style="text-align:right; font-size:11px; color:#666; margin-bottom:14px;">
-                <span id="contadorNombre">0</span>/30
-            </div>
+                oninput="validarFormularioChat()">
+            <div style="text-align:right; font-size:11px; color:#666; margin-bottom:14px;"><span id="contadorNombre">0</span>/30</div>
 
-            <!-- Buscar usuarios -->
             <label style="font-size:12px; color:#aaa; display:block; margin-bottom:4px;">Agregar usuario (opcional)</label>
-            <input
-                type="text"
-                id="buscarAliasInput"
-                placeholder="Buscar por alias o nombre..."
+            <input type="text" id="buscarAliasInput" placeholder="Buscar por alias o nombre..."
                 style="width:100%; padding:10px 12px; border-radius:8px; border:1px solid #555; background:#12121f; color:white; font-size:14px; box-sizing:border-box; margin-bottom:10px;"
-                oninput="buscarUsuario()"
-            >
+                oninput="buscarUsuario()">
 
             <div id="resultadoBusqueda" style="margin-bottom:14px; min-height:36px; max-height:220px; overflow-y:auto; font-size:14px; color:#ccc; display:flex; flex-direction:column; gap:6px;"></div>
 
-            <!-- Usuario seleccionado -->
-            <div id="usuarioSeleccionadoTag" style="display:none; margin-bottom:14px; padding:6px 10px; background:#2a2a3e; border-radius:8px; font-size:13px; color:#ccc; display:none; align-items:center; justify-content:space-between;">
+            <div id="usuarioSeleccionadoTag" style="display:none; margin-bottom:14px; padding:6px 10px; background:#2a2a3e; border-radius:8px; font-size:13px; color:#ccc; align-items:center; justify-content:space-between;">
                 <span id="usuarioSeleccionadoNombre"></span>
                 <span onclick="deseleccionarUsuario()" style="cursor:pointer; color:#e74c3c; font-weight:bold; margin-left:10px;">✕</span>
             </div>
@@ -117,6 +248,33 @@
         </div>
     </div>
 
+    <!-- Modal: Nueva tarea manual -->
+    <div id="modalNuevaTarea">
+        <div class="modal-tarea-box">
+            <h3>➕ Nueva Tarea</h3>
+
+            <label>Descripción *</label>
+            <input type="text" id="nuevaTareaDesc" placeholder="Ej: Correr 5km en 30 minutos" maxlength="200">
+
+            <div class="modal-tarea-row">
+                <div>
+                    <label>EXP (puntos)</label>
+                    <input type="number" id="nuevaTareaPuntos" value="10" min="5" max="200">
+                </div>
+                <div>
+                    <label>Días límite</label>
+                    <input type="number" id="nuevaTareaDias" value="7" min="1" max="30">
+                </div>
+            </div>
+
+            <div class="modal-tarea-actions">
+                <button class="btn-cancel" onclick="cerrarModalTarea()">Cancelar</button>
+                <button class="btn-confirm" onclick="crearTareaManual()">Crear Tarea</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Ventana principal de chat -->
     <main class="chat-window">
         <header class="chat-header">
             <button id="btnAbrirSidebar" onclick="abrirSidebar()" title="Ver chats">☰</button>
@@ -130,30 +288,39 @@
 
         <footer class="input-area">
             <form id="chatForm">
-                <input type="text" id="mensajeInput" placeholder="Escribe tu mensaje..." autocomplete="off">
+                <input type="text" id="mensajeInput" placeholder="Escribe un mensaje o pide una tarea al coach..." autocomplete="off">
                 <button type="submit" class="btn-send" title="Enviar">➤</button>
             </form>
         </footer>
     </main>
 
+    <!-- Sidebar derecho — Tareas + Nivel -->
     <aside class="info-sidebar">
+
+        <!-- Tareas -->
         <div class="side-card">
-            <h3>Tareas (POI)</h3>
-            <ul>
-                <li><input type="checkbox" checked> Tarea semanal (+100)</li>
-                <li><input type="checkbox" checked> Terminar pendientes (+5)</li>
-                <li><input type="checkbox" checked> Arreglar interfaz (+5)</li>
+            <h3>
+                Tareas (POI)
+                <button class="btn-add-task" onclick="abrirModalTarea()" title="Nueva tarea">＋</button>
+            </h3>
+            <ul id="sidebarTaskList">
+                <li style="color:#666;font-size:12px;padding:6px 0">Selecciona un chat</li>
             </ul>
         </div>
+
+        <!-- Nivel -->
         <div class="side-card">
             <h3>Nivel</h3>
-            <p id="nivelSidebar">...</p>
-            <div class="progress-bar"><div class="progress-fill"></div></div>
-            <div class="badge">LIGA PROFESIONAL ⚽</div>
+            <p id="nivelSidebar" style="font-size:14px;color:#e8eaf0;margin:0 0 2px">...</p>
+            <div class="progress-bar">
+                <div class="progress-fill" id="sidebarProgress" style="width:0%"></div>
+            </div>
+            <div class="badge" id="sidebarBadge">—</div>
         </div>
+
     </aside>
 
-    <!-- 🎥 Modal de videollamada -->
+    <!-- Modal videollamada -->
     <div id="videoModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.92); z-index:1000; flex-direction:column; align-items:center; justify-content:center;">
         <div style="display:flex; gap:16px; margin-bottom:20px; flex-wrap:wrap; justify-content:center;">
             <div style="position:relative;">
@@ -173,7 +340,7 @@
         <p id="videoStatus" style="color:#aaa; margin-top:14px; font-size:13px;">Conectando...</p>
     </div>
 
-    <!-- 🔔 Modal llamada entrante -->
+    <!-- Modal llamada entrante -->
     <div id="incomingModal" style="display:none; position:fixed; bottom:24px; right:24px; background:#1e1e2e; border:1px solid #555; border-radius:12px; padding:20px 24px; z-index:1001; color:white; text-align:center; box-shadow:0 4px 20px rgba(0,0,0,0.5);">
         <p style="margin:0 0 14px; font-size:15px;">📞 Videollamada entrante...</p>
         <div style="display:flex; gap:10px; justify-content:center;">
@@ -188,16 +355,22 @@
             window.location.href = "index.html";
         } else {
             window.usuarioId = usuario.id;
-            document.getElementById("nivelSidebar").innerText = usuario.nombre + " - Nivel " + usuario.nivel;
+
+            const nivel = usuario.nivel ?? 1;
+            const exp   = usuario.exp   ?? 0;
+            document.getElementById("nivelSidebar").innerText = usuario.nombre + " — Nivel " + nivel;
+            document.getElementById("sidebarProgress").style.width = (exp % 100) + "%";
+
+            const rangos = ["NOVATO","APRENDIZ","TITULAR","VETERANO","LEYENDA"];
+            document.getElementById("sidebarBadge").textContent =
+                (rangos[Math.min(Math.floor(nivel / 5), rangos.length - 1)] || "NOVATO") + " ⚽";
         }
     </script>
 
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <script src="js/chat.js"></script>
     <script src="js/videocall.js"></script>
-
     <script src="js/chat-modal.js"></script>
-
 
     <script>
         function abrirSidebar() {
@@ -208,7 +381,6 @@
             document.querySelector(".chats-sidebar").classList.remove("open");
             document.getElementById("sidebarOverlay").classList.remove("visible");
         }
-        // Cerrar sidebar al seleccionar un chat en móvil
         document.addEventListener("chatSeleccionado", cerrarSidebar);
     </script>
 </body>
