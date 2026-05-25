@@ -7,8 +7,7 @@ window.socket = socket;
 // Registrar usuario y activar videollamada cuando el socket conecte
 socket.on("connect", () => {
     console.log("🔌 Socket conectado:", socket.id);
-    socket.emit("register", usuarioId);      // notifica al servidor quién eres
-    inicializarSocketVideollamada(socket);   // activa eventos (solo la primera vez)
+    socket.emit("register", usuarioId);
 
     // Si había un chat abierto y el socket reconectó, volver a unirse al room
     if (currentChat) {
