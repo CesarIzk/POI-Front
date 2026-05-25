@@ -1,5 +1,4 @@
 // ─── WebRTC Video Call ──────────────────────────────────────
-// Usa el socket ya conectado en chat.js (window.socket)
 const ICE_SERVERS = {
     iceServers: [
         { urls: "stun:stun.l.google.com:19302" },
@@ -12,27 +11,29 @@ let localStream    = null;
 let micActivo      = true;
 let camActiva      = true;
 let pendingOffer   = null;
+let activeChatId   = null; // ← FIX Bug 3: capturar chatId al crear PC
 
-// Usar siempre window.socket para evitar problemas de scope en móvil
 const getSocket = () => window.socket;
 
 // ─── Elementos del DOM ─────────────────────────────────────
-const videoModal    = document.getElementById("videoModal");
-const incomingModal = document.getElementById("incomingModal");
-const localVideo    = document.getElementById("localVideo");
-const remoteVideo   = document.getElementById("remoteVideo");
-const videoStatus   = document.getElementById("videoStatus");
+// FIX Bug 1: acceder al DOM solo cuando esté listo
+let videoModal, incomingModal, localVideo, remoteVideo, videoStatus;
 
+function initDOM() {
+    videoModal    = document.getElementById("videoModal");
+    incomingModal = document.getElementById("incomingModal");
+    localVideo    = document.getElementById("localVideo");
+    remoteVideo   = document.getElementById("remoteVideo");
+    videoStatus   = document.getElementById("videoStatus");
+}
 
 // ─── Helper: obtener stream con fallback ───────────────────
 async function obtenerStream() {
-    // Intentar video + audio
     try {
         return await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
     } catch (e) {
         console.warn("Cámara no disponible, intentando solo audio:", e.message);
     }
-    // Fallback: solo audio
     try {
         return await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
     } catch (e) {
@@ -41,11 +42,16 @@ async function obtenerStream() {
     }
 }
 
-
-// ─── 1. INICIAR llamada (quien llama) ──────────────────────
+// ─── 1. INICIAR llamada ──────────────────────────────────────
 async function iniciarLlamada() {
     if (!currentChat) {
         alert("Selecciona un chat primero");
+        return;
+    }
+
+    // FIX Bug 4: evitar doble llamada
+    if (peerConnection) {
+        alert("Ya hay una llamada en curso");
         return;
     }
 
@@ -56,7 +62,8 @@ async function iniciarLlamada() {
         videoStatus.innerText = localStream.getVideoTracks().length > 0
             ? "Llamando..." : "Llamando (solo audio)...";
 
-        peerConnection = crearPeerConnection();
+        activeChatId = currentChat; // FIX Bug 3
+        peerConnection = crearPeerConnection(activeChatId);
         localStream.getTracks().forEach(t => peerConnection.addTrack(t, localStream));
 
         const offer = await peerConnection.createOffer();
@@ -67,27 +74,73 @@ async function iniciarLlamada() {
     } catch (err) {
         console.error("Error iniciando llamada:", err);
         alert(err.message || "No se pudo iniciar la llamada");
+        limpiarLlamada();
     }
 }
 
+// ─── 2. RECIBIR offer ────────────────────────────────────────
+// FIX Bug 1: registrar el evento DENTRO de DOMContentLoaded
+// para garantizar que el DOM exista en móvil
+document.addEventListener("DOMContentLoaded", () => {
+    initDOM();
 
-// ─── 2. RECIBIR offer (quien recibe la llamada) ─────────────
-// ⚠️ NO filtramos por currentChat aquí — la llamada puede llegar
-//    aunque el receptor tenga otro chat abierto o ninguno
-window.socket.on("videoOffer", async ({ chatId, offer, from }) => {
-    console.log("📞 videoOffer recibido, chatId:", chatId, "currentChat:", currentChat);
-    pendingOffer = { offer, from, chatId };
-    incomingModal.style.display = "block";
+    window.socket.on("videoOffer", ({ chatId, offer, from }) => {
+        console.log("📞 videoOffer recibido, chatId:", chatId);
+
+        // FIX Bug 4: si ya hay llamada activa, rechazar automáticamente
+        if (peerConnection) {
+            getSocket().emit("videoRejected", { chatId });
+            return;
+        }
+
+        pendingOffer = { offer, from, chatId };
+
+        // FIX Bug 1 + Bug 2: forzar display con setAttribute para saltarse CSS
+        incomingModal.setAttribute("style", "display:block !important");
+        // Fallback para navegadores que ignoran !important en style attr
+        incomingModal.style.setProperty("display", "block", "important");
+        incomingModal.style.visibility = "visible";
+        incomingModal.style.opacity    = "1";
+        incomingModal.style.zIndex     = "9999";
+    });
+
+    window.socket.on("videoAnswer", async ({ answer }) => {
+        if (!peerConnection) return;
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+        videoStatus.innerText = "En llamada ✅";
+    });
+
+    window.socket.on("iceCandidate", async ({ candidate }) => {
+        if (!peerConnection || !candidate) return;
+        try {
+            await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+        } catch (err) {
+            console.error("Error ICE candidate:", err);
+        }
+    });
+
+    window.socket.on("videoRejected", () => {
+        videoStatus.innerText = "Llamada rechazada ❌";
+        setTimeout(() => colgarLlamada(), 2000);
+    });
+
+    window.socket.on("videoHangup", () => {
+        colgarLlamada();
+    });
 });
 
-
-// ─── 3. ACEPTAR llamada ─────────────────────────────────────
+// ─── 3. ACEPTAR llamada ──────────────────────────────────────
+// FIX iOS Bug: aceptarLlamada se llama desde un tap/click del usuario,
+// lo que satisface el requisito de "user gesture" de iOS para getUserMedia
 async function aceptarLlamada() {
+    // Ocultar modal de forma definitiva
+    incomingModal.style.setProperty("display", "none", "important");
     incomingModal.style.display = "none";
+
     if (!pendingOffer) return;
     const { offer, chatId } = pendingOffer;
+    pendingOffer = null; // FIX Bug 4: limpiar inmediatamente para evitar doble proceso
 
-    // Si el usuario no estaba en ese chat, abrirlo automáticamente
     if (parseInt(chatId) !== parseInt(currentChat)) {
         currentChat = chatId;
         getSocket().emit("joinChat", chatId);
@@ -97,10 +150,14 @@ async function aceptarLlamada() {
     try {
         localStream = await obtenerStream();
         localVideo.srcObject = localStream;
+
+        // FIX Bug 2: mostrarModal con forzado de display
         mostrarModal();
+
         videoStatus.innerText = "Conectando...";
 
-        peerConnection = crearPeerConnection();
+        activeChatId = chatId; // FIX Bug 3
+        peerConnection = crearPeerConnection(activeChatId);
         localStream.getTracks().forEach(t => peerConnection.addTrack(t, localStream));
 
         await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
@@ -112,48 +169,31 @@ async function aceptarLlamada() {
     } catch (err) {
         console.error("Error al aceptar llamada:", err);
         alert(err.message || "No se pudo conectar la llamada");
+        limpiarLlamada();
     }
 }
 
-
-// ─── 4. RECHAZAR llamada ────────────────────────────────────
+// ─── 4. RECHAZAR llamada ─────────────────────────────────────
 function rechazarLlamada() {
+    incomingModal.style.setProperty("display", "none", "important");
     incomingModal.style.display = "none";
+
     if (pendingOffer) {
         getSocket().emit("videoRejected", { chatId: pendingOffer.chatId });
+        pendingOffer = null;
     }
-    pendingOffer = null;
 }
 
-
-// ─── 5. RECIBIR answer ──────────────────────────────────────
-window.socket.on("videoAnswer", async ({ answer }) => {
-    if (!peerConnection) return;
-    await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-    videoStatus.innerText = "En llamada ✅";
-});
-
-
-// ─── 6. ICE candidates ──────────────────────────────────────
-window.socket.on("iceCandidate", async ({ candidate }) => {
-    if (!peerConnection || !candidate) return;
-    try {
-        await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-    } catch (err) {
-        console.error("Error ICE candidate:", err);
-    }
-});
-
-
-// ─── 7. Llamada rechazada ───────────────────────────────────
-window.socket.on("videoRejected", () => {
-    videoStatus.innerText = "Llamada rechazada ❌";
-    setTimeout(() => colgarLlamada(), 2000);
-});
-
-
-// ─── 8. COLGAR ──────────────────────────────────────────────
+// ─── 5. COLGAR ───────────────────────────────────────────────
 function colgarLlamada() {
+    if (activeChatId) {
+        getSocket().emit("videoHangup", { chatId: activeChatId });
+    }
+    limpiarLlamada();
+}
+
+// FIX: separar lógica de limpieza para reusar sin emitir evento
+function limpiarLlamada() {
     if (peerConnection) {
         peerConnection.close();
         peerConnection = null;
@@ -165,20 +205,14 @@ function colgarLlamada() {
 
     localVideo.srcObject  = null;
     remoteVideo.srcObject = null;
+    activeChatId = null;
+
+    videoModal.style.setProperty("display", "none", "important");
     videoModal.style.display = "none";
     videoStatus.innerText = "Conectando...";
-
-    if (currentChat) {
-        getSocket().emit("videoHangup", { chatId: currentChat });
-    }
 }
 
-window.socket.on("videoHangup", () => {
-    colgarLlamada();
-});
-
-
-// ─── 9. Toggle mic / cam ────────────────────────────────────
+// ─── Toggle mic / cam ────────────────────────────────────────
 function toggleMic() {
     if (!localStream) return;
     micActivo = !micActivo;
@@ -193,14 +227,14 @@ function toggleCam() {
     document.getElementById("btnToggleCam").style.background = camActiva ? "#444" : "#e74c3c";
 }
 
-
-// ─── Helpers ────────────────────────────────────────────────
-function crearPeerConnection() {
+// ─── Helpers ─────────────────────────────────────────────────
+// FIX Bug 3: recibe chatId como parámetro en lugar de leer currentChat
+function crearPeerConnection(chatId) {
     const pc = new RTCPeerConnection(ICE_SERVERS);
 
     pc.onicecandidate = ({ candidate }) => {
-        if (candidate && currentChat) {
-            getSocket().emit("iceCandidate", { chatId: currentChat, candidate });
+        if (candidate && chatId) {
+            getSocket().emit("iceCandidate", { chatId, candidate });
         }
     };
 
@@ -219,6 +253,10 @@ function crearPeerConnection() {
     return pc;
 }
 
+// FIX Bug 2: forzar display:flex con setProperty para ignorar CSS externo
 function mostrarModal() {
-    videoModal.style.display = "flex";
+    videoModal.style.setProperty("display", "flex", "important");
+    videoModal.style.visibility = "visible";
+    videoModal.style.opacity    = "1";
+    videoModal.style.zIndex     = "9999";
 }
