@@ -459,13 +459,6 @@ window.socket.on("videoRejected", () => {
 });
 
 
-// REGISTER
-if (window.usuarioId) {
-
-    window.socket.emit("register", window.usuarioId);
-}
-
-
 // cleanup navegador
 window.addEventListener("beforeunload", () => {
 
