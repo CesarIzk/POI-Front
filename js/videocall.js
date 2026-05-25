@@ -29,12 +29,23 @@ async function iniciarLlamada() {
         return;
     }
 
+    // Intentar con video+audio; si la cámara está ocupada, fallback a solo audio
     try {
         localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        localVideo.srcObject = localStream;
+    } catch (videoErr) {
+        console.warn("Cámara no disponible, intentando solo audio:", videoErr.message);
+        try {
+            localStream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
+        } catch (audioErr) {
+            alert("No se pudo acceder a la cámara ni al micrófono.\nCierra otras apps que la estén usando.");
+            return;
+        }
+    }
 
+    try {
+        localVideo.srcObject = localStream;
         mostrarModal();
-        videoStatus.innerText = "Llamando...";
+        videoStatus.innerText = localStream.getVideoTracks().length > 0 ? "Llamando..." : "Llamando (solo audio)...";
 
         peerConnection = crearPeerConnection();
         localStream.getTracks().forEach(t => peerConnection.addTrack(t, localStream));
@@ -42,12 +53,11 @@ async function iniciarLlamada() {
         const offer = await peerConnection.createOffer();
         await peerConnection.setLocalDescription(offer);
 
-        // Enviar offer al otro usuario en el chat
         socket.emit("videoOffer", { chatId: currentChat, offer, from: usuarioId });
 
     } catch (err) {
-        console.error("Error accediendo a cámara/mic:", err);
-        alert("No se pudo acceder a cámara o micrófono");
+        console.error("Error iniciando llamada:", err);
+        alert("Error al iniciar la llamada: " + err.message);
     }
 }
 
