@@ -1,6 +1,5 @@
 // ─── WebRTC Video Call ──────────────────────────────────────
 // Usa el socket ya conectado en chat.js (window.socket)
-// STUN servers gratuitos de Google para atravesar NAT
 const ICE_SERVERS = {
     iceServers: [
         { urls: "stun:stun.l.google.com:19302" },
@@ -12,7 +11,10 @@ let peerConnection = null;
 let localStream    = null;
 let micActivo      = true;
 let camActiva      = true;
-let pendingOffer   = null; // guarda el offer mientras se acepta
+let pendingOffer   = null;
+
+// Usar siempre window.socket para evitar problemas de scope en móvil
+const getSocket = () => window.socket;
 
 // ─── Elementos del DOM ─────────────────────────────────────
 const videoModal    = document.getElementById("videoModal");
@@ -20,6 +22,24 @@ const incomingModal = document.getElementById("incomingModal");
 const localVideo    = document.getElementById("localVideo");
 const remoteVideo   = document.getElementById("remoteVideo");
 const videoStatus   = document.getElementById("videoStatus");
+
+
+// ─── Helper: obtener stream con fallback ───────────────────
+async function obtenerStream() {
+    // Intentar video + audio
+    try {
+        return await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    } catch (e) {
+        console.warn("Cámara no disponible, intentando solo audio:", e.message);
+    }
+    // Fallback: solo audio
+    try {
+        return await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
+    } catch (e) {
+        console.error("Sin acceso a micrófono tampoco:", e.message);
+        throw new Error("No se pudo acceder a cámara ni micrófono. Verifica que no estén en uso por otra app.");
+    }
+}
 
 
 // ─── 1. INICIAR llamada (quien llama) ──────────────────────
@@ -30,11 +50,11 @@ async function iniciarLlamada() {
     }
 
     try {
-        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        localStream = await obtenerStream();
         localVideo.srcObject = localStream;
-
         mostrarModal();
-        videoStatus.innerText = "Llamando...";
+        videoStatus.innerText = localStream.getVideoTracks().length > 0
+            ? "Llamando..." : "Llamando (solo audio)...";
 
         peerConnection = crearPeerConnection();
         localStream.getTracks().forEach(t => peerConnection.addTrack(t, localStream));
@@ -42,20 +62,20 @@ async function iniciarLlamada() {
         const offer = await peerConnection.createOffer();
         await peerConnection.setLocalDescription(offer);
 
-        // Enviar offer al otro usuario en el chat
-        socket.emit("videoOffer", { chatId: currentChat, offer, from: usuarioId });
+        getSocket().emit("videoOffer", { chatId: currentChat, offer, from: usuarioId });
 
     } catch (err) {
-        console.error("Error accediendo a cámara/mic:", err);
-        alert("No se pudo acceder a cámara o micrófono");
+        console.error("Error iniciando llamada:", err);
+        alert(err.message || "No se pudo iniciar la llamada");
     }
 }
 
 
 // ─── 2. RECIBIR offer (quien recibe la llamada) ─────────────
-socket.on("videoOffer", async ({ chatId, offer, from }) => {
-    if (parseInt(chatId) !== parseInt(currentChat)) return;
-
+// ⚠️ NO filtramos por currentChat aquí — la llamada puede llegar
+//    aunque el receptor tenga otro chat abierto o ninguno
+window.socket.on("videoOffer", async ({ chatId, offer, from }) => {
+    console.log("📞 videoOffer recibido, chatId:", chatId, "currentChat:", currentChat);
     pendingOffer = { offer, from, chatId };
     incomingModal.style.display = "block";
 });
@@ -64,14 +84,19 @@ socket.on("videoOffer", async ({ chatId, offer, from }) => {
 // ─── 3. ACEPTAR llamada ─────────────────────────────────────
 async function aceptarLlamada() {
     incomingModal.style.display = "none";
-
     if (!pendingOffer) return;
     const { offer, chatId } = pendingOffer;
 
-    try {
-        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        localVideo.srcObject = localStream;
+    // Si el usuario no estaba en ese chat, abrirlo automáticamente
+    if (parseInt(chatId) !== parseInt(currentChat)) {
+        currentChat = chatId;
+        getSocket().emit("joinChat", chatId);
+        document.getElementById("chatTitle").innerText = "Chat #" + chatId;
+    }
 
+    try {
+        localStream = await obtenerStream();
+        localVideo.srcObject = localStream;
         mostrarModal();
         videoStatus.innerText = "Conectando...";
 
@@ -82,10 +107,11 @@ async function aceptarLlamada() {
         const answer = await peerConnection.createAnswer();
         await peerConnection.setLocalDescription(answer);
 
-        socket.emit("videoAnswer", { chatId, answer, from: usuarioId });
+        getSocket().emit("videoAnswer", { chatId, answer, from: usuarioId });
 
     } catch (err) {
         console.error("Error al aceptar llamada:", err);
+        alert(err.message || "No se pudo conectar la llamada");
     }
 }
 
@@ -94,14 +120,14 @@ async function aceptarLlamada() {
 function rechazarLlamada() {
     incomingModal.style.display = "none";
     if (pendingOffer) {
-        socket.emit("videoRejected", { chatId: pendingOffer.chatId });
+        getSocket().emit("videoRejected", { chatId: pendingOffer.chatId });
     }
     pendingOffer = null;
 }
 
 
 // ─── 5. RECIBIR answer ──────────────────────────────────────
-socket.on("videoAnswer", async ({ answer }) => {
+window.socket.on("videoAnswer", async ({ answer }) => {
     if (!peerConnection) return;
     await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
     videoStatus.innerText = "En llamada ✅";
@@ -109,7 +135,7 @@ socket.on("videoAnswer", async ({ answer }) => {
 
 
 // ─── 6. ICE candidates ──────────────────────────────────────
-socket.on("iceCandidate", async ({ candidate }) => {
+window.socket.on("iceCandidate", async ({ candidate }) => {
     if (!peerConnection || !candidate) return;
     try {
         await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
@@ -120,7 +146,7 @@ socket.on("iceCandidate", async ({ candidate }) => {
 
 
 // ─── 7. Llamada rechazada ───────────────────────────────────
-socket.on("videoRejected", () => {
+window.socket.on("videoRejected", () => {
     videoStatus.innerText = "Llamada rechazada ❌";
     setTimeout(() => colgarLlamada(), 2000);
 });
@@ -143,11 +169,11 @@ function colgarLlamada() {
     videoStatus.innerText = "Conectando...";
 
     if (currentChat) {
-        socket.emit("videoHangup", { chatId: currentChat });
+        getSocket().emit("videoHangup", { chatId: currentChat });
     }
 }
 
-socket.on("videoHangup", () => {
+window.socket.on("videoHangup", () => {
     colgarLlamada();
 });
 
@@ -172,20 +198,19 @@ function toggleCam() {
 function crearPeerConnection() {
     const pc = new RTCPeerConnection(ICE_SERVERS);
 
-    // Enviar ICE candidates al otro peer
     pc.onicecandidate = ({ candidate }) => {
         if (candidate && currentChat) {
-            socket.emit("iceCandidate", { chatId: currentChat, candidate });
+            getSocket().emit("iceCandidate", { chatId: currentChat, candidate });
         }
     };
 
-    // Cuando llega el stream remoto, mostrarlo
     pc.ontrack = ({ streams }) => {
         remoteVideo.srcObject = streams[0];
         videoStatus.innerText = "En llamada ✅";
     };
 
     pc.onconnectionstatechange = () => {
+        console.log("Estado conexión WebRTC:", pc.connectionState);
         if (pc.connectionState === "disconnected" || pc.connectionState === "failed") {
             videoStatus.innerText = "Conexión perdida ❌";
         }
