@@ -112,7 +112,10 @@ async function iniciarLlamada() {
         await peerConnection.setLocalDescription(offer);
 
         console.log("📤 Enviando videoOffer al chat:", activeChatId);
-        window.socket.emit("videoOffer", { chatId: activeChatId, offer, from: usuarioId });
+        // Obtener el id del otro usuario del chat para notificarle aunque no esté en el room
+        const miembros = await fetch(`${API_URL}/api/chats/${activeChatId}/members`, { headers: authHeaders() }).then(r=>r.json()).catch(()=>[]);
+        const destino = miembros.find(m => m.IdUsuario != usuarioId);
+        window.socket.emit("videoOffer", { chatId: activeChatId, offer, from: usuarioId, toUsuarioId: destino?.IdUsuario });
 
     } catch (err) {
         console.error("Error iniciando llamada:", err);

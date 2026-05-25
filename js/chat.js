@@ -4,6 +4,13 @@ const API_URL = "https://poi-back-production-7931.up.railway.app";
 const socket = io(API_URL);
 window.socket = socket;
 
+// Registrar usuario y activar videollamada cuando el socket conecte
+socket.on("connect", () => {
+    console.log("🔌 Socket conectado:", socket.id);
+    socket.emit("register", usuarioId);      // ← notifica al servidor quién eres
+    inicializarSocketVideollamada(socket);   // ← activa eventos de videollamada
+});
+
 const chatList    = document.getElementById("chatList");
 const messagesDiv = document.getElementById("messages");
 const form        = document.getElementById("chatForm");
