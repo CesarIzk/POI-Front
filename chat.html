@@ -69,23 +69,47 @@
 
     <!-- Modal: Nuevo chat / Agregar amigo -->
     <div id="modalNuevoChat" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:2000; align-items:center; justify-content:center;">
-        <div style="background:#1e1e2e; border:1px solid #444; border-radius:14px; padding:28px 32px; width:340px; color:white; box-shadow:0 8px 32px rgba(0,0,0,0.6);">
+        <div style="background:#1e1e2e; border:1px solid #444; border-radius:14px; padding:28px 32px; width:360px; color:white; box-shadow:0 8px 32px rgba(0,0,0,0.6);">
             <h3 style="margin:0 0 6px; font-size:17px;">➕ Nuevo Chat</h3>
-            <p style="margin:0 0 18px; font-size:13px; color:#aaa;">Busca un usuario por su alias para iniciar un chat.</p>
+            <p style="margin:0 0 18px; font-size:13px; color:#aaa;">Ponle un nombre al chat y agrega participantes.</p>
 
+            <!-- Nombre del chat -->
+            <label style="font-size:12px; color:#aaa; display:block; margin-bottom:4px;">Nombre del chat *</label>
+            <input
+                type="text"
+                id="nombreChatInput"
+                placeholder="Ej: Proyecto, Equipo Alpha..."
+                maxlength="30"
+                style="width:100%; padding:10px 12px; border-radius:8px; border:1px solid #555; background:#12121f; color:white; font-size:14px; box-sizing:border-box; margin-bottom:4px;"
+                oninput="validarFormularioChat()"
+            >
+            <div style="text-align:right; font-size:11px; color:#666; margin-bottom:14px;">
+                <span id="contadorNombre">0</span>/30
+            </div>
+
+            <!-- Buscar usuarios -->
+            <label style="font-size:12px; color:#aaa; display:block; margin-bottom:4px;">Agregar usuario (opcional)</label>
             <input
                 type="text"
                 id="buscarAliasInput"
-                placeholder="Alias del usuario..."
+                placeholder="Buscar por alias o nombre..."
                 style="width:100%; padding:10px 12px; border-radius:8px; border:1px solid #555; background:#12121f; color:white; font-size:14px; box-sizing:border-box; margin-bottom:10px;"
                 oninput="buscarUsuario()"
             >
 
-            <div id="resultadoBusqueda" style="margin-bottom:14px; min-height:36px; max-height:260px; overflow-y:auto; font-size:14px; color:#ccc; display:flex; flex-direction:column; gap:6px;"></div>
+            <div id="resultadoBusqueda" style="margin-bottom:14px; min-height:36px; max-height:220px; overflow-y:auto; font-size:14px; color:#ccc; display:flex; flex-direction:column; gap:6px;"></div>
+
+            <!-- Usuario seleccionado -->
+            <div id="usuarioSeleccionadoTag" style="display:none; margin-bottom:14px; padding:6px 10px; background:#2a2a3e; border-radius:8px; font-size:13px; color:#ccc; display:none; align-items:center; justify-content:space-between;">
+                <span id="usuarioSeleccionadoNombre"></span>
+                <span onclick="deseleccionarUsuario()" style="cursor:pointer; color:#e74c3c; font-weight:bold; margin-left:10px;">✕</span>
+            </div>
+
+            <div id="mensajeErrorChat" style="font-size:12px; color:#e74c3c; margin-bottom:10px; display:none;"></div>
 
             <div style="display:flex; gap:10px; justify-content:flex-end;">
                 <button onclick="cerrarModalNuevoChat()" style="padding:8px 18px; border-radius:8px; border:1px solid #555; background:transparent; color:#aaa; cursor:pointer;">Cancelar</button>
-                <button id="btnCrearChat" onclick="crearChatConUsuario()" disabled style="padding:8px 18px; border-radius:8px; border:none; background:#5865f2; color:white; cursor:pointer; font-weight:bold; opacity:0.5;">Iniciar Chat</button>
+                <button id="btnCrearChat" onclick="crearChatConUsuario()" disabled style="padding:8px 18px; border-radius:8px; border:none; background:#5865f2; color:white; cursor:pointer; font-weight:bold; opacity:0.5;">Crear Chat</button>
             </div>
         </div>
     </div>

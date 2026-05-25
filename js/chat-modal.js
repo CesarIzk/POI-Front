@@ -4,15 +4,20 @@ let usuarioSeleccionado = null;
 let buscarTimeout = null;
 let _todosLosUsuarios = null;
 
-// Abrir modal y cargar lista de usuarios inmediatamente
+// ── Abrir modal ───────────────────────────────────────────────
 function abrirModalNuevoChat() {
     usuarioSeleccionado = null;
+    document.getElementById("nombreChatInput").value = "";
     document.getElementById("buscarAliasInput").value = "";
+    document.getElementById("resultadoBusqueda").innerHTML = "";
+    document.getElementById("contadorNombre").textContent = "0";
+    document.getElementById("mensajeErrorChat").style.display = "none";
+    document.getElementById("usuarioSeleccionadoTag").style.display = "none";
     document.getElementById("btnCrearChat").disabled = true;
     document.getElementById("btnCrearChat").style.opacity = "0.5";
     document.getElementById("modalNuevoChat").classList.add("open");
     mostrarUsuarios("");
-    setTimeout(() => document.getElementById("buscarAliasInput").focus(), 100);
+    setTimeout(() => document.getElementById("nombreChatInput").focus(), 100);
 }
 
 function cerrarModalNuevoChat() {
@@ -26,7 +31,20 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 });
 
-// Fetch usuarios una sola vez y cachear
+// ── Validar que el nombre no esté vacío para habilitar el botón ──
+function validarFormularioChat() {
+    const nombre = document.getElementById("nombreChatInput").value.trim();
+    const contador = document.getElementById("contadorNombre");
+    const btn = document.getElementById("btnCrearChat");
+
+    contador.textContent = document.getElementById("nombreChatInput").value.length;
+
+    const valido = nombre.length > 0 && nombre.length <= 30;
+    btn.disabled = !valido;
+    btn.style.opacity = valido ? "1" : "0.5";
+}
+
+// ── Cargar usuarios (cache) ───────────────────────────────────
 async function cargarTodosLosUsuarios() {
     if (_todosLosUsuarios) return _todosLosUsuarios;
     const token = localStorage.getItem("token");
@@ -34,12 +52,11 @@ async function cargarTodosLosUsuarios() {
         headers: { "Authorization": "Bearer " + token }
     });
     const data = await res.json();
-    // Excluir al usuario actual
     _todosLosUsuarios = (data || []).filter(u => (u.IdUsuario ?? u.id) != window.usuarioId);
     return _todosLosUsuarios;
 }
 
-// Renderizar lista filtrada
+// ── Renderizar lista filtrada ─────────────────────────────────
 async function mostrarUsuarios(texto) {
     const resultado = document.getElementById("resultadoBusqueda");
     resultado.innerHTML = '<span style="color:#888; font-size:13px;">Cargando...</span>';
@@ -53,7 +70,7 @@ async function mostrarUsuarios(texto) {
             );
 
         if (filtrados.length === 0) {
-            resultado.innerHTML = '<span style="color:#e74c3c; font-size:13px;">No se encontró ningún usuario</span>';
+            resultado.innerHTML = '<span style="color:#888; font-size:13px;">No se encontraron usuarios</span>';
             return;
         }
 
@@ -63,13 +80,16 @@ async function mostrarUsuarios(texto) {
             const alias  = u.Alias  ?? u.alias  ?? "?";
             const nombre = u.Nombre ?? u.nombre ?? "";
 
+            // No mostrar si ya está seleccionado
+            if (usuarioSeleccionado && usuarioSeleccionado.id == id) return;
+
             const div = document.createElement("div");
             div.className = "usuario-resultado";
             div.innerHTML =
                 '<div class="avatar">' + alias[0].toUpperCase() + '</div>' +
                 '<div><strong>' + alias + '</strong>' +
                 '<div style="font-size:12px; color:#888;">' + nombre + '</div></div>';
-            div.onclick = () => seleccionarUsuario({ id, alias, nombre }, div);
+            div.onclick = () => seleccionarUsuario({ id, alias, nombre });
             resultado.appendChild(div);
         });
     } catch (err) {
@@ -78,47 +98,79 @@ async function mostrarUsuarios(texto) {
     }
 }
 
-// Filtrar al escribir (debounce 250ms)
+// ── Filtrar al escribir ───────────────────────────────────────
 async function buscarUsuario() {
     clearTimeout(buscarTimeout);
     const texto = document.getElementById("buscarAliasInput").value.trim().toLowerCase();
     buscarTimeout = setTimeout(() => mostrarUsuarios(texto), 250);
 }
 
-// Marcar usuario seleccionado
-function seleccionarUsuario(usuario, elem) {
+// ── Seleccionar / deseleccionar usuario ───────────────────────
+function seleccionarUsuario(usuario) {
     usuarioSeleccionado = usuario;
-    document.querySelectorAll(".usuario-resultado").forEach(el => el.classList.remove("seleccionado"));
-    elem.classList.add("seleccionado");
-    document.getElementById("btnCrearChat").disabled = false;
-    document.getElementById("btnCrearChat").style.opacity = "1";
+
+    // Mostrar tag del usuario seleccionado
+    const tag = document.getElementById("usuarioSeleccionadoTag");
+    document.getElementById("usuarioSeleccionadoNombre").textContent = "👤 " + usuario.alias + (usuario.nombre ? " — " + usuario.nombre : "");
+    tag.style.display = "flex";
+
+    // Limpiar la lista de resultados
+    document.getElementById("buscarAliasInput").value = "";
+    document.getElementById("resultadoBusqueda").innerHTML = "";
 }
 
-// Crear chat con el usuario seleccionado
+function deseleccionarUsuario() {
+    usuarioSeleccionado = null;
+    document.getElementById("usuarioSeleccionadoTag").style.display = "none";
+    mostrarUsuarios("");
+}
+
+// ── Crear chat ────────────────────────────────────────────────
 async function crearChatConUsuario() {
-    if (!usuarioSeleccionado) return;
+    const nombre = document.getElementById("nombreChatInput").value.trim();
+    const errorDiv = document.getElementById("mensajeErrorChat");
+
+    if (!nombre) {
+        errorDiv.textContent = "El nombre del chat es obligatorio";
+        errorDiv.style.display = "block";
+        return;
+    }
+
+    errorDiv.style.display = "none";
     const btn = document.getElementById("btnCrearChat");
     btn.textContent = "Creando...";
     btn.disabled = true;
+
     try {
         const token = localStorage.getItem("token");
+        const body = { nombre };
+
+        // Si hay usuario seleccionado lo mandamos también (el backend puede usarlo o ignorarlo)
+        if (usuarioSeleccionado) body.usuarioDestino = usuarioSeleccionado.id;
+
         const res = await fetch(API_URL + "/api/chats", {
             method: "POST",
             headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
-            body: JSON.stringify({ usuarioDestino: usuarioSeleccionado.id })
+            body: JSON.stringify(body)
         });
         const data = await res.json();
-        if (data && data.IdChat) {
+
+        // El backend puede devolver id_chat o IdChat
+        const idChat = data.IdChat ?? data.id_chat;
+
+        if (data.success && idChat) {
             cerrarModalNuevoChat();
             await cargarChats();
-            abrirChat(data.IdChat, usuarioSeleccionado.alias);
+            abrirChat(idChat, nombre);
         } else {
-            alert(data.message || "No se pudo crear el chat");
+            errorDiv.textContent = data.message || "No se pudo crear el chat";
+            errorDiv.style.display = "block";
         }
     } catch (err) {
-        alert("Error al crear el chat");
+        errorDiv.textContent = "Error al conectar con el servidor";
+        errorDiv.style.display = "block";
     } finally {
-        btn.textContent = "Iniciar Chat";
+        btn.textContent = "Crear Chat";
         btn.disabled = false;
         btn.style.opacity = "1";
     }
