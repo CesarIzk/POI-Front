@@ -1,34 +1,11 @@
 // ─── WebRTC Video Call ──────────────────────────────────────
-const ICE_SERVERS = {
-    iceServers: [
-        { urls: "stun:stun.l.google.com:19302" },
-        { urls: "stun:stun1.l.google.com:19302" },
-        // TURN público gratuito (Open Relay) — evita el connectionState:failed
-        {
-            urls: "turn:openrelay.metered.ca:80",
-            username: "openrelayproject",
-            credential: "openrelayproject"
-        },
-        {
-            urls: "turn:openrelay.metered.ca:443",
-            username: "openrelayproject",
-            credential: "openrelayproject"
-        },
-        {
-            urls: "turn:openrelay.metered.ca:443?transport=tcp",
-            username: "openrelayproject",
-            credential: "openrelayproject"
-        }
-    ]
-};
-
 let peerConnection  = null;
 let localStream     = null;
 let micActivo       = true;
 let camActiva       = true;
 let pendingOffer    = null;
 let activeChatId    = null;
-let llamandoEnCurso = false;   // ← FIX: evita doble click
+let llamandoEnCurso = false;
 
 const getSocket = () => window.socket;
 
@@ -43,6 +20,23 @@ function initDOM() {
     videoStatus   = document.getElementById("videoStatus");
 }
 
+// ─── Obtener ICE servers desde el backend ─────────────────
+async function obtenerIceServers() {
+    try {
+        const res = await fetch(`${API_URL}/api/turn-credentials`, {
+            headers: { Authorization: "Bearer " + localStorage.getItem("token") }
+        });
+        const data = await res.json();
+        return data.iceServers;
+    } catch (e) {
+        console.warn("⚠ No se pudo obtener TURN, usando solo STUN:", e.message);
+        return [
+            { urls: "stun:stun.l.google.com:19302" },
+            { urls: "stun:stun1.l.google.com:19302" }
+        ];
+    }
+}
+
 // ─── Helper: obtener stream con fallback ───────────────────
 async function obtenerStream() {
     try {
@@ -52,7 +46,6 @@ async function obtenerStream() {
     } catch (e) {
         console.warn("⚠ video+audio falló:", e.name, e.message);
     }
-
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
         console.log("⚠ Fallback: solo audio");
@@ -64,19 +57,15 @@ async function obtenerStream() {
 
 // ─── 1. INICIAR llamada ──────────────────────────────────────
 async function iniciarLlamada() {
-    const turnRes = await fetch(`${API_URL}/api/turn-credentials`, {
-    headers: { Authorization: "Bearer " + localStorage.getItem("token") }
-});
-const { iceServers } = await turnRes.json();
-peerConnection = new RTCPeerConnection({ iceServers });
-    if (!currentChat) { alert("Selecciona un chat primero"); return; }
-    if (peerConnection) { alert("Ya hay una llamada en curso"); return; }
-    if (llamandoEnCurso) return;  // ← FIX: bloquea doble click
+    if (!currentChat)    { alert("Selecciona un chat primero"); return; }
+    if (peerConnection)  { alert("Ya hay una llamada en curso"); return; }
+    if (llamandoEnCurso) return;
     llamandoEnCurso = true;
 
     try {
-        // Garantizar que el caller esté en la sala
         getSocket().emit("joinChat", currentChat);
+
+        const iceServers = await obtenerIceServers();
 
         localStream = await obtenerStream();
         localVideo.srcObject = localStream;
@@ -84,8 +73,8 @@ peerConnection = new RTCPeerConnection({ iceServers });
         videoStatus.innerText = localStream.getVideoTracks().length > 0
             ? "Llamando..." : "Llamando (solo audio)...";
 
-        activeChatId = currentChat;
-        peerConnection = crearPeerConnection(activeChatId);
+        activeChatId   = currentChat;
+        peerConnection = crearPeerConnection(activeChatId, iceServers);
         localStream.getTracks().forEach(t => peerConnection.addTrack(t, localStream));
 
         const offer = await peerConnection.createOffer();
@@ -98,7 +87,7 @@ peerConnection = new RTCPeerConnection({ iceServers });
         alert(err.message || "No se pudo iniciar la llamada");
         limpiarLlamada();
     } finally {
-        llamandoEnCurso = false;  // ← siempre se desbloquea
+        llamandoEnCurso = false;
     }
 }
 
@@ -106,20 +95,16 @@ peerConnection = new RTCPeerConnection({ iceServers });
 document.addEventListener("DOMContentLoaded", () => {
     initDOM();
 
-    // ─── 2. RECIBIR offer ───────────────────────────────────
     window.socket.on("videoOffer", ({ chatId, offer, from }) => {
         console.log("📞 videoOffer recibido, chatId:", chatId);
-
         if (peerConnection) {
             getSocket().emit("videoRejected", { chatId });
             return;
         }
-
         pendingOffer = { offer, from, chatId };
         incomingModal.classList.add("visible");
     });
 
-    // ─── 5. RECIBIR answer ──────────────────────────────────
     window.socket.on("videoAnswer", async ({ answer }) => {
         if (!peerConnection) return;
         try {
@@ -130,7 +115,6 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
-    // ─── 6. ICE candidates ──────────────────────────────────
     window.socket.on("iceCandidate", async ({ candidate }) => {
         if (!peerConnection || !candidate) return;
         try {
@@ -140,13 +124,11 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
-    // ─── 7. Llamada rechazada ───────────────────────────────
     window.socket.on("videoRejected", () => {
         videoStatus.innerText = "Llamada rechazada ❌";
         setTimeout(() => limpiarLlamada(), 2000);
     });
 
-    // ─── 8. Colgar remoto ───────────────────────────────────
     window.socket.on("videoHangup", () => {
         limpiarLlamada();
     });
@@ -154,11 +136,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
 // ─── 3. ACEPTAR llamada ──────────────────────────────────────
 async function aceptarLlamada() {
-    const turnRes = await fetch(`${API_URL}/api/turn-credentials`, {
-    headers: { Authorization: "Bearer " + localStorage.getItem("token") }
-});
-const { iceServers } = await turnRes.json();
-peerConnection = new RTCPeerConnection({ iceServers });
     incomingModal.classList.remove("visible");
     if (!pendingOffer) return;
 
@@ -170,13 +147,15 @@ peerConnection = new RTCPeerConnection({ iceServers });
     await new Promise(resolve => setTimeout(resolve, 300));
 
     try {
+        const iceServers = await obtenerIceServers();
+
         localStream = await obtenerStream();
         localVideo.srcObject = localStream;
         mostrarModal();
         videoStatus.innerText = "Conectando...";
 
-        activeChatId = chatId;
-        peerConnection = crearPeerConnection(activeChatId);
+        activeChatId   = chatId;
+        peerConnection = crearPeerConnection(activeChatId, iceServers);
         localStream.getTracks().forEach(t => peerConnection.addTrack(t, localStream));
 
         await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
@@ -203,36 +182,23 @@ function rechazarLlamada() {
 
 // ─── 9. COLGAR ───────────────────────────────────────────────
 function colgarLlamada() {
-    if (activeChatId) {
-        getSocket().emit("videoHangup", { chatId: activeChatId });
-    }
+    if (activeChatId) getSocket().emit("videoHangup", { chatId: activeChatId });
     limpiarLlamada();
 }
 
 function limpiarLlamada() {
     llamandoEnCurso = false;
-
-    if (peerConnection) {
-        peerConnection.close();
-        peerConnection = null;
-    }
-    if (localStream) {
-        localStream.getTracks().forEach(t => t.stop());
-        localStream = null;
-    }
-    if (remoteVideo && remoteVideo.srcObject) {
+    if (peerConnection) { peerConnection.close(); peerConnection = null; }
+    if (localStream)    { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
+    if (remoteVideo?.srcObject) {
         remoteVideo.srcObject.getTracks().forEach(t => t.stop());
         remoteVideo.srcObject = null;
     }
     if (localVideo) localVideo.srcObject = null;
-
     activeChatId = null;
-
-    if (videoModal) videoModal.classList.remove("visible");
+    if (videoModal)  videoModal.classList.remove("visible");
     if (videoStatus) videoStatus.innerText = "Conectando...";
-
-    const btn = document.getElementById("btnActivarAudio");
-    if (btn) btn.remove();
+    document.getElementById("btnActivarAudio")?.remove();
 }
 
 // ─── Toggle mic / cam ────────────────────────────────────────
@@ -250,14 +216,14 @@ function toggleCam() {
     document.getElementById("btnToggleCam").style.background = camActiva ? "#444" : "#e74c3c";
 }
 
-// ─── Helpers ─────────────────────────────────────────────────
-function crearPeerConnection(chatId) {
-    const pc = new RTCPeerConnection(ICE_SERVERS);
+// ─── Crear PeerConnection con iceServers dinámicos ────────
+function crearPeerConnection(chatId, iceServers) {
+    const pc = new RTCPeerConnection({ iceServers });
 
     pc.ontrack = ({ track, streams }) => {
         console.log("🎬 ontrack recibido, kind:", track.kind);
 
-        if (streams && streams[0]) {
+        if (streams?.[0]) {
             if (remoteVideo.srcObject !== streams[0]) {
                 remoteVideo.srcObject = streams[0];
                 console.log("✅ srcObject asignado desde streams[0]");
@@ -267,13 +233,11 @@ function crearPeerConnection(chatId) {
             remoteVideo.srcObject.addTrack(track);
         }
 
-        // FIX play(): sólo llamar cuando el elemento está listo
         const tryPlay = () => {
             remoteVideo.play().then(() => {
                 remoteVideo.muted = false;
             }).catch(e => {
                 if (e.name === "AbortError") {
-                    // Otro load interrumpió — reintentar brevemente
                     setTimeout(tryPlay, 200);
                 } else {
                     console.warn("⚠ play() bloqueado:", e.message);
@@ -287,16 +251,12 @@ function crearPeerConnection(chatId) {
     };
 
     pc.onicecandidate = ({ candidate }) => {
-        if (candidate && chatId) {
-            getSocket().emit("iceCandidate", { chatId, candidate });
-        }
+        if (candidate && chatId) getSocket().emit("iceCandidate", { chatId, candidate });
     };
 
     pc.onconnectionstatechange = () => {
         console.log("🔗 WebRTC state:", pc.connectionState);
-        if (pc.connectionState === "connected") {
-            videoStatus.innerText = "En llamada ✅";
-        }
+        if (pc.connectionState === "connected") videoStatus.innerText = "En llamada ✅";
         if (pc.connectionState === "disconnected" || pc.connectionState === "failed") {
             videoStatus.innerText = "Conexión perdida ❌";
             setTimeout(() => limpiarLlamada(), 3000);
@@ -304,14 +264,12 @@ function crearPeerConnection(chatId) {
     };
 
     pc.onicegatheringstatechange = () => console.log("🧊 ICE gathering:", pc.iceGatheringState);
-    pc.onsignalingstatechange   = () => console.log("📡 Signaling state:", pc.signalingState);
+    pc.onsignalingstatechange    = () => console.log("📡 Signaling state:", pc.signalingState);
 
     return pc;
 }
 
-function mostrarModal() {
-    videoModal.classList.add("visible");
-}
+function mostrarModal() { videoModal.classList.add("visible"); }
 
 function mostrarBotonActivarAudio() {
     if (document.getElementById("btnActivarAudio")) return;
@@ -323,7 +281,7 @@ function mostrarBotonActivarAudio() {
         "transform:translateX(-50%)", "z-index:1100",
         "padding:12px 28px", "background:#5865f2",
         "color:white", "border:none", "border-radius:10px",
-        "font-size:15px", "cursor:pointer", "width:auto"
+        "font-size:15px", "cursor:pointer"
     ].join(";");
     btn.onclick = () => {
         remoteVideo.muted = false;
