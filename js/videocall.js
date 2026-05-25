@@ -2,7 +2,23 @@
 const ICE_SERVERS = {
     iceServers: [
         { urls: "stun:stun.l.google.com:19302" },
-        { urls: "stun:stun1.l.google.com:19302" }
+        { urls: "stun:stun1.l.google.com:19302" },
+        // TURN para NAT simétrico (necesario en producción)
+        {
+            urls: "turn:openrelay.metered.ca:80",
+            username: "openrelayproject",
+            credential: "openrelayproject"
+        },
+        {
+            urls: "turn:openrelay.metered.ca:443",
+            username: "openrelayproject",
+            credential: "openrelayproject"
+        },
+        {
+            urls: "turn:openrelay.metered.ca:443?transport=tcp",
+            username: "openrelayproject",
+            credential: "openrelayproject"
+        }
     ]
 };
 
@@ -11,12 +27,11 @@ let localStream    = null;
 let micActivo      = true;
 let camActiva      = true;
 let pendingOffer   = null;
-let activeChatId   = null; // ← FIX Bug 3: capturar chatId al crear PC
+let activeChatId   = null;
 
 const getSocket = () => window.socket;
 
 // ─── Elementos del DOM ─────────────────────────────────────
-// FIX Bug 1: acceder al DOM solo cuando esté listo
 let videoModal, incomingModal, localVideo, remoteVideo, videoStatus;
 
 function initDOM() {
@@ -49,20 +64,22 @@ async function iniciarLlamada() {
         return;
     }
 
-    // FIX Bug 4: evitar doble llamada
     if (peerConnection) {
         alert("Ya hay una llamada en curso");
         return;
     }
 
     try {
+        // FIX: asegurar que el socket esté en la sala antes de emitir el offer
+        getSocket().emit("joinChat", currentChat);
+
         localStream = await obtenerStream();
         localVideo.srcObject = localStream;
         mostrarModal();
         videoStatus.innerText = localStream.getVideoTracks().length > 0
             ? "Llamando..." : "Llamando (solo audio)...";
 
-        activeChatId = currentChat; // FIX Bug 3
+        activeChatId = currentChat;
         peerConnection = crearPeerConnection(activeChatId);
         localStream.getTracks().forEach(t => peerConnection.addTrack(t, localStream));
 
@@ -79,25 +96,23 @@ async function iniciarLlamada() {
 }
 
 // ─── 2. RECIBIR offer ────────────────────────────────────────
-// FIX Bug 1: registrar el evento DENTRO de DOMContentLoaded
-// para garantizar que el DOM exista en móvil
 document.addEventListener("DOMContentLoaded", () => {
     initDOM();
 
     window.socket.on("videoOffer", ({ chatId, offer, from }) => {
         console.log("📞 videoOffer recibido, chatId:", chatId);
 
-        // FIX Bug 4: si ya hay llamada activa, rechazar automáticamente
         if (peerConnection) {
             getSocket().emit("videoRejected", { chatId });
             return;
         }
 
+        // FIX: unirse a la sala al recibir el offer, no al aceptar
+        getSocket().emit("joinChat", chatId);
+
         pendingOffer = { offer, from, chatId };
 
-        // FIX Bug 1 + Bug 2: forzar display con setAttribute para saltarse CSS
         incomingModal.setAttribute("style", "display:block !important");
-        // Fallback para navegadores que ignoran !important en style attr
         incomingModal.style.setProperty("display", "block", "important");
         incomingModal.style.visibility = "visible";
         incomingModal.style.opacity    = "1";
@@ -106,6 +121,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     window.socket.on("videoAnswer", async ({ answer }) => {
         if (!peerConnection) return;
+        console.log("✅ videoAnswer recibido");
         await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
         videoStatus.innerText = "En llamada ✅";
     });
@@ -130,33 +146,28 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 // ─── 3. ACEPTAR llamada ──────────────────────────────────────
-// FIX iOS Bug: aceptarLlamada se llama desde un tap/click del usuario,
-// lo que satisface el requisito de "user gesture" de iOS para getUserMedia
 async function aceptarLlamada() {
-    // Ocultar modal de forma definitiva
     incomingModal.style.setProperty("display", "none", "important");
     incomingModal.style.display = "none";
 
     if (!pendingOffer) return;
     const { offer, chatId } = pendingOffer;
-    pendingOffer = null; // FIX Bug 4: limpiar inmediatamente para evitar doble proceso
+    pendingOffer = null;
 
+    // Ya hicimos joinChat al recibir el offer, pero si el currentChat
+    // es diferente actualizamos la UI igual
     if (parseInt(chatId) !== parseInt(currentChat)) {
         currentChat = chatId;
-        getSocket().emit("joinChat", chatId);
         document.getElementById("chatTitle").innerText = "Chat #" + chatId;
     }
 
     try {
         localStream = await obtenerStream();
         localVideo.srcObject = localStream;
-
-        // FIX Bug 2: mostrarModal con forzado de display
         mostrarModal();
-
         videoStatus.innerText = "Conectando...";
 
-        activeChatId = chatId; // FIX Bug 3
+        activeChatId = chatId;
         peerConnection = crearPeerConnection(activeChatId);
         localStream.getTracks().forEach(t => peerConnection.addTrack(t, localStream));
 
@@ -192,7 +203,6 @@ function colgarLlamada() {
     limpiarLlamada();
 }
 
-// FIX: separar lógica de limpieza para reusar sin emitir evento
 function limpiarLlamada() {
     if (peerConnection) {
         peerConnection.close();
@@ -228,7 +238,6 @@ function toggleCam() {
 }
 
 // ─── Helpers ─────────────────────────────────────────────────
-// FIX Bug 3: recibe chatId como parámetro en lugar de leer currentChat
 function crearPeerConnection(chatId) {
     const pc = new RTCPeerConnection(ICE_SERVERS);
 
@@ -238,7 +247,9 @@ function crearPeerConnection(chatId) {
         }
     };
 
+    // FIX: log para confirmar que el track remoto llega
     pc.ontrack = ({ streams }) => {
+        console.log("🎥 ontrack disparado, streams:", streams.length);
         remoteVideo.srcObject = streams[0];
         videoStatus.innerText = "En llamada ✅";
     };
@@ -250,10 +261,14 @@ function crearPeerConnection(chatId) {
         }
     };
 
+    // FIX: log de ICE para diagnosticar si TURN está funcionando
+    pc.oniceconnectionstatechange = () => {
+        console.log("ICE state:", pc.iceConnectionState);
+    };
+
     return pc;
 }
 
-// FIX Bug 2: forzar display:flex con setProperty para ignorar CSS externo
 function mostrarModal() {
     videoModal.style.setProperty("display", "flex", "important");
     videoModal.style.visibility = "visible";
