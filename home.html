@@ -4,9 +4,430 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Home - POI</title>
-    <link rel="stylesheet" href="css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;600;700&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0d0f14;
+            --surface: #13161e;
+            --surface2: #1a1e2a;
+            --border: #252a38;
+            --accent: #4f8eff;
+            --accent2: #7c5cfc;
+            --gold: #f0b429;
+            --green: #2ecc71;
+            --red: #e74c3c;
+            --text: #e8eaf0;
+            --text-muted: #6b7280;
+            --glow: rgba(79,142,255,0.15);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Inter', sans-serif;
+            min-height: 100vh;
+            display: flex;
+            overflow-x: hidden;
+        }
+
+        /* ── Side Nav ── */
+        .side-menu {
+            width: 64px;
+            background: var(--surface);
+            border-right: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 24px 0;
+            gap: 8px;
+            position: fixed;
+            top: 0; left: 0; bottom: 0;
+            z-index: 100;
+        }
+
+        .menu-item {
+            width: 44px; height: 44px;
+            display: flex; align-items: center; justify-content: center;
+            border-radius: 12px;
+            cursor: pointer;
+            font-size: 20px;
+            transition: background 0.2s, transform 0.15s;
+            color: var(--text-muted);
+            text-decoration: none;
+        }
+        .menu-item a { color: inherit; text-decoration: none; font-size: 20px; }
+        .menu-item:hover { background: var(--surface2); transform: scale(1.08); color: var(--text); }
+        .menu-item.active { background: var(--glow); color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+
+        /* ── Main ── */
+        .main-content {
+            margin-left: 64px;
+            flex: 1;
+            padding: 24px 32px;
+            max-width: 860px;
+        }
+
+        /* ── Top Bar ── */
+        .top-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 28px;
+            animation: fadeDown 0.5s ease both;
+        }
+
+        .top-bar h1 {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 28px;
+            font-weight: 700;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: var(--text);
+        }
+
+        .user-avatar-small {
+            width: 38px; height: 38px;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 18px;
+            cursor: pointer;
+            transition: border-color 0.2s;
+        }
+        .user-avatar-small:hover { border-color: var(--accent); }
+
+        /* ── Profile Card ── */
+        .profile-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 24px;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            margin-bottom: 24px;
+            position: relative;
+            overflow: hidden;
+            animation: fadeUp 0.5s 0.1s ease both;
+        }
+
+        .profile-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, var(--accent), var(--accent2));
+        }
+
+        .avatar-large {
+            width: 72px; height: 72px;
+            background: var(--surface2);
+            border: 2px solid var(--accent);
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 32px;
+            box-shadow: 0 0 20px var(--glow);
+            flex-shrink: 0;
+        }
+
+        .profile-info { flex: 1; }
+
+        .profile-info h2 {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 22px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            margin-bottom: 2px;
+        }
+
+        .rank {
+            font-size: 11px;
+            font-weight: 500;
+            letter-spacing: 3px;
+            color: var(--gold);
+            text-transform: uppercase;
+            margin-bottom: 10px;
+        }
+
+        .level-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 8px;
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+
+        .level-badge {
+            background: var(--accent);
+            color: #fff;
+            font-family: 'Rajdhani', sans-serif;
+            font-weight: 700;
+            font-size: 12px;
+            letter-spacing: 1px;
+            padding: 2px 10px;
+            border-radius: 20px;
+        }
+
+        .progress-bar {
+            height: 6px;
+            background: var(--surface2);
+            border-radius: 99px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent), var(--accent2));
+            border-radius: 99px;
+            width: 0%;
+            transition: width 1s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .exp-label {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 5px;
+        }
+
+        /* ── Grid ── */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        @media (max-width: 640px) {
+            .dashboard-grid { grid-template-columns: 1fr; }
+            .main-content { padding: 16px; }
+        }
+
+        /* ── Card ── */
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 20px;
+            animation: fadeUp 0.5s ease both;
+        }
+
+        .card:nth-child(1) { animation-delay: 0.2s; }
+        .card:nth-child(2) { animation-delay: 0.3s; }
+
+        .card h3 {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 14px;
+            font-weight: 700;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            margin-bottom: 16px;
+        }
+
+        /* Logros */
+        .medals-row {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+            font-size: 24px;
+        }
+
+        .medal {
+            width: 44px; height: 44px;
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 20px;
+            transition: transform 0.2s, box-shadow 0.2s;
+            cursor: default;
+        }
+        .medal:hover { transform: translateY(-3px); box-shadow: 0 8px 20px rgba(0,0,0,0.3); }
+
+        .stats-row {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .stat-item {
+            display: flex;
+            justify-content: space-between;
+            font-size: 13px;
+            color: var(--text-muted);
+            padding: 6px 10px;
+            background: var(--surface2);
+            border-radius: 8px;
+        }
+
+        .stat-item strong {
+            color: var(--text);
+            font-weight: 600;
+        }
+
+        /* Tareas */
+        .task-list {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .task-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            background: var(--surface2);
+            border-radius: 10px;
+            border: 1px solid transparent;
+            cursor: pointer;
+            transition: border-color 0.2s, background 0.2s;
+            font-size: 13px;
+        }
+
+        .task-item:hover { border-color: var(--border); }
+        .task-item.done { opacity: 0.5; }
+        .task-item.done .task-desc { text-decoration: line-through; color: var(--text-muted); }
+
+        .task-check {
+            width: 18px; height: 18px;
+            border: 2px solid var(--border);
+            border-radius: 5px;
+            display: flex; align-items: center; justify-content: center;
+            flex-shrink: 0;
+            transition: background 0.2s, border-color 0.2s;
+            font-size: 11px;
+        }
+
+        .task-item.done .task-check {
+            background: var(--green);
+            border-color: var(--green);
+        }
+
+        .task-desc { flex: 1; }
+
+        .task-exp {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--gold);
+            background: rgba(240,180,41,0.1);
+            padding: 2px 7px;
+            border-radius: 20px;
+        }
+
+        /* Countdown */
+        .countdown-card {
+            grid-column: 1 / -1;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 16px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            animation: fadeUp 0.5s 0.4s ease both;
+        }
+
+        .countdown-label {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 13px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: var(--text-muted);
+        }
+
+        .countdown-timer {
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 28px;
+            font-weight: 700;
+            color: var(--accent);
+            letter-spacing: 4px;
+        }
+
+        .countdown-icon { font-size: 28px; }
+
+        /* Loading skeleton */
+        .skeleton {
+            background: linear-gradient(90deg, var(--surface2) 25%, var(--border) 50%, var(--surface2) 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.4s infinite;
+            border-radius: 6px;
+            color: transparent;
+            user-select: none;
+        }
+
+        /* Loading overlay */
+        .loading-overlay {
+            position: fixed; inset: 0;
+            background: var(--bg);
+            display: flex; align-items: center; justify-content: center;
+            z-index: 999;
+            transition: opacity 0.4s;
+        }
+
+        .loading-spinner {
+            width: 40px; height: 40px;
+            border: 3px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        /* Toast */
+        .toast {
+            position: fixed;
+            bottom: 24px; right: 24px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-left: 3px solid var(--green);
+            border-radius: 10px;
+            padding: 12px 18px;
+            font-size: 13px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+            transform: translateY(80px);
+            opacity: 0;
+            transition: all 0.35s cubic-bezier(0.34,1.56,0.64,1);
+            z-index: 200;
+            max-width: 280px;
+        }
+        .toast.show { transform: translateY(0); opacity: 1; }
+        .toast.error { border-left-color: var(--red); }
+
+        /* Animations */
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(16px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes fadeDown {
+            from { opacity: 0; transform: translateY(-10px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes shimmer {
+            to { background-position: -200% 0; }
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+    </style>
 </head>
 <body class="dashboard-layout">
+
+    <!-- Loading overlay -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-spinner"></div>
+    </div>
+
+    <!-- Toast -->
+    <div class="toast" id="toast"></div>
 
     <nav class="side-menu">
         <div class="menu-item active">🏠</div>
@@ -20,61 +441,69 @@
             <div class="user-avatar-small">👤</div>
         </header>
 
+        <!-- Profile Card -->
         <section class="profile-card">
             <div class="avatar-large">👤</div>
             <div class="profile-info">
-                <h2 id="nombreUsuario">...</h2>
-                <p class="rank">JUGADOR TITULAR</p>
-                <div class="level-container">
-                    <span id="nivelUsuario">Nivel -</span>
-                    <span id="expUsuario">- Total EXP</span>
-                    <div class="progress-bar">
-                        <div class="progress-fill" id="progressFill" style="width: 0%;"></div>
-                    </div>
+                <h2 id="nombreUsuario">Cargando...</h2>
+                <p class="rank" id="rankUsuario">—</p>
+                <div class="level-row">
+                    <span class="level-badge" id="nivelUsuario">Nv —</span>
+                    <span id="expUsuario" style="font-size:13px;color:var(--text-muted)">— EXP</span>
                 </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+                <div class="exp-label" id="expLabel">Calculando progreso...</div>
             </div>
         </section>
 
         <div class="dashboard-grid">
+
+            <!-- Logros -->
             <section class="card achievements">
                 <h3>Mis Logros</h3>
-                <div class="medals-row">
-                    <span>🏅</span> <span>🥇</span> <span>🛡️</span> <span>🎖️</span>
+                <div class="medals-row" id="medalsRow">
+                    <div class="medal skeleton">🏅</div>
+                    <div class="medal skeleton">🥇</div>
+                    <div class="medal skeleton">🛡️</div>
+                    <div class="medal skeleton">🎖️</div>
                 </div>
                 <div class="stats-row">
-                    <p>Tareas completadas: <strong>16</strong></p>
-                    <p>Recompensas obtenidas: <strong>20</strong></p>
+                    <div class="stat-item">
+                        <span>Tareas completadas</span>
+                        <strong id="tareasCompletadas">—</strong>
+                    </div>
+                    <div class="stat-item">
+                        <span>EXP total</span>
+                        <strong id="expTotal">—</strong>
+                    </div>
                 </div>
             </section>
 
+            <!-- Tareas -->
             <section class="card tasks">
-                <h3>Tareas</h3>
-                <ul class="task-list">
-                    <li><input type="checkbox" checked> Tarea semanal (+100 EXP)</li>
-                    <li><input type="checkbox" checked> Terminar pendientes (+5 EXP)</li>
-                    <li><input type="checkbox" checked> Arreglar la interfaz (+5 EXP)</li>
-                    <li class="next-task">Próxima Tarea Diaria (18hrs)</li>
+                <h3>Tareas Activas</h3>
+                <ul class="task-list" id="taskList">
+                    <li class="task-item"><div class="task-check skeleton" style="width:18px;height:18px"></div><span class="task-desc skeleton" style="height:14px;display:block;width:80%">cargando</span></li>
+                    <li class="task-item"><div class="task-check skeleton" style="width:18px;height:18px"></div><span class="task-desc skeleton" style="height:14px;display:block;width:60%">cargando</span></li>
+                    <li class="task-item"><div class="task-check skeleton" style="width:18px;height:18px"></div><span class="task-desc skeleton" style="height:14px;display:block;width:70%">cargando</span></li>
                 </ul>
             </section>
+
+            <!-- Countdown -->
+            <div class="countdown-card">
+                <div>
+                    <div class="countdown-label">Próxima tarea diaria</div>
+                    <div class="countdown-timer" id="countdown">--:--:--</div>
+                </div>
+                <div class="countdown-icon">⏳</div>
+            </div>
+
         </div>
     </main>
 
-    <script>
-        // 🔒 Proteger ruta — si no hay sesión, redirigir al login
-        const usuario = JSON.parse(localStorage.getItem("usuario"));
-        if (!usuario) {
-            window.location.href = "index.html";
-        } else {
-            // Rellenar datos del usuario
-            document.getElementById("nombreUsuario").innerText = usuario.nombre;
-            document.getElementById("nivelUsuario").innerText = "Nivel " + usuario.nivel;
-            document.getElementById("expUsuario").innerText = usuario.exp + " Total EXP";
-
-            // Barra de progreso (exp % 100 como ejemplo simple)
-            const porcentaje = usuario.exp % 100;
-            document.getElementById("progressFill").style.width = porcentaje + "%";
-        }
-    </script>
+    <script src="js/home.js"></script>
 
 </body>
 </html>
