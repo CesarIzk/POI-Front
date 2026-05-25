@@ -1,471 +1,242 @@
 // ─────────────────────────────────────────────────────────────
-// videocall.js
-// WebRTC + Socket.IO
+// videocall.js — Videollamada por Socket.IO (sin WebRTC)
+// Funciona en cualquier red: local, diferente red, NAT estricto
 // ─────────────────────────────────────────────────────────────
 
-const ICE_SERVERS = {
-    iceServers: [
-        { urls: "stun:stun.l.google.com:19302" },
-        { urls: "stun:stun1.l.google.com:19302" }
-    ]
-};
-
-let localStream = null;
-let peerConnection = null;
+let localStream    = null;
+let frameInterval  = null;   // setInterval que captura y envía frames
+let enLlamada      = false;
+let chatIdLlamada  = null;
+let pendingOffer   = null;
 
 let micActivo = true;
 let camActiva = true;
 
-let pendingOffer = null;
-let pendingCandidates = [];
+// Canvas oculto para capturar frames del video local
+const canvas  = document.createElement("canvas");
+const ctx2d   = canvas.getContext("2d");
+canvas.width  = 320;
+canvas.height = 240;
 
 
-// ─────────────────────────────────────────────────────────────
-// HELPERS UI
-// ─────────────────────────────────────────────────────────────
+// ── Helpers UI ────────────────────────────────────────────────
 
-function mostrarModal(id) {
-    document.getElementById(id).style.display = "flex";
-}
-
-function ocultarModal(id) {
-    document.getElementById(id).style.display = "none";
-}
-
-function setStatus(texto) {
-    const el = document.getElementById("videoStatus");
-    if (el) el.innerText = texto;
-}
+function mostrarModal(id) { document.getElementById(id).style.display = "flex"; }
+function ocultarModal(id) { document.getElementById(id).style.display = "none"; }
+function setStatus(txt)   { const el = document.getElementById("videoStatus"); if (el) el.innerText = txt; }
 
 
-// ─────────────────────────────────────────────────────────────
-// MEDIA LOCAL
-// ─────────────────────────────────────────────────────────────
+// ── Obtener cámara y micrófono ────────────────────────────────
 
 async function obtenerMediaLocal() {
-
     try {
-
-        localStream = await navigator.mediaDevices.getUserMedia({
-            video: true,
-            audio: true
-        });
-
+        localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         document.getElementById("localVideo").srcObject = localStream;
-
         return true;
-
     } catch (err) {
-
-        console.error("Error media:", err);
-
-        alert("No se pudo acceder a cámara o micrófono");
-
+        console.error("Media error:", err);
+        alert("No se pudo acceder a cámara o micrófono. Revisa los permisos.");
         return false;
     }
 }
 
 
-// ─────────────────────────────────────────────────────────────
-// PEER CONNECTION
-// ─────────────────────────────────────────────────────────────
+// ── Capturar y enviar frames por socket ──────────────────────
+// Toma un frame del video local cada ~100ms (10 fps) y lo
+// manda como base64 al servidor, que lo reenvía al otro lado.
 
-function crearPeerConnection(chatId) {
+function iniciarEnvioFrames(chatId) {
+    const videoEl = document.getElementById("localVideo");
 
-    const pc = new RTCPeerConnection(ICE_SERVERS);
+    frameInterval = setInterval(() => {
+        if (!localStream || !enLlamada) return;
+        if (videoEl.readyState < 2) return;   // video aún no listo
 
-    // tracks locales
-    if (localStream) {
+        ctx2d.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+        const frame = canvas.toDataURL("image/jpeg", 0.5);   // calidad 50%
 
-        localStream.getTracks().forEach(track => {
-            pc.addTrack(track, localStream);
-        });
-    }
+        window.socket.emit("videoFrame", { chatId, frame, from: window.usuarioId });
+    }, 100);
+}
 
-    // stream remoto
-    pc.ontrack = (event) => {
-
-        console.log("🎬 TRACK REMOTO");
-
-        const remoteVideo = document.getElementById("remoteVideo");
-
-        if (event.streams && event.streams[0]) {
-
-            remoteVideo.srcObject = event.streams[0];
-
-        } else {
-
-            if (!remoteVideo.srcObject) {
-                remoteVideo.srcObject = new MediaStream();
-            }
-
-            remoteVideo.srcObject.addTrack(event.track);
-        }
-
-        remoteVideo.autoplay = true;
-remoteVideo.playsInline = true;
-remoteVideo.muted = false;
-
-remoteVideo.play().catch(err => {
-    console.warn("Autoplay bloqueado:", err);
-});
-
-        setStatus("En llamada ✅");
-    };
-
-    // ICE local
-    pc.onicecandidate = (event) => {
-
-        if (event.candidate) {
-
-            console.log("📤 ICE enviado");
-
-            window.socket.emit("iceCandidate", {
-                chatId,
-                candidate: event.candidate
-            });
-        }
-    };
-
-    // estado
-    pc.onconnectionstatechange = () => {
-
-        console.log("🔗 STATE:", pc.connectionState);
-
-        if (pc.connectionState === "connected") {
-            setStatus("En llamada ✅");
-        }
-
-        if (
-            pc.connectionState === "failed" ||
-            pc.connectionState === "disconnected" ||
-            pc.connectionState === "closed"
-        ) {
-
-            setStatus("Conexión perdida ❌");
-
-            setTimeout(() => {
-                limpiarLlamada();
-            }, 2000);
-        }
-    };
-
-    return pc;
+function detenerEnvioFrames() {
+    if (frameInterval) { clearInterval(frameInterval); frameInterval = null; }
 }
 
 
-// ─────────────────────────────────────────────────────────────
-// INICIAR LLAMADA
-// ─────────────────────────────────────────────────────────────
+// ── INICIAR LLAMADA ───────────────────────────────────────────
 
 async function iniciarLlamada() {
-
     const chatId = window.currentChat ?? currentChat;
-
-    if (!chatId) {
-        alert("Selecciona un chat");
-        return;
-    }
+    if (!chatId) { alert("Abre un chat primero."); return; }
 
     mostrarModal("videoModal");
-
     setStatus("Accediendo a cámara...");
 
     const ok = await obtenerMediaLocal();
+    if (!ok) { ocultarModal("videoModal"); return; }
 
-    if (!ok) {
-        ocultarModal("videoModal");
-        return;
-    }
+    chatIdLlamada = chatId;
+    enLlamada     = true;
 
-    pendingCandidates = [];
-
-    peerConnection = crearPeerConnection(chatId);
-
+    window.socket.emit("videoOffer", { chatId, from: window.usuarioId });
     setStatus("Llamando...");
-
-    const offer = await peerConnection.createOffer();
-
-    await peerConnection.setLocalDescription(offer);
-
-    window.socket.emit("videoOffer", {
-        chatId,
-        offer,
-        from: window.usuarioId
-    });
+    iniciarEnvioFrames(chatId);
 }
 
 
-// ─────────────────────────────────────────────────────────────
-// ACEPTAR LLAMADA
-// ─────────────────────────────────────────────────────────────
+// ── ACEPTAR LLAMADA ───────────────────────────────────────────
 
 async function aceptarLlamada() {
-
-    if (!pendingOffer) return;
-
     ocultarModal("incomingModal");
-
     mostrarModal("videoModal");
-
     setStatus("Accediendo a cámara...");
 
     const ok = await obtenerMediaLocal();
+    if (!ok) { ocultarModal("videoModal"); return; }
 
-    if (!ok) return;
-
-    const { offer, chatId } = pendingOffer;
-
-
-    peerConnection = crearPeerConnection(chatId);
-
-    await peerConnection.setRemoteDescription(
-        new RTCSessionDescription(offer)
-    );
-
-    // agregar ICE pendientes
-    for (const candidate of pendingCandidates) {
-
-        try {
-
-            await peerConnection.addIceCandidate(
-                new RTCIceCandidate(candidate)
-            );
-
-        } catch (err) {
-
-            console.error("Error ICE pendiente:", err);
-        }
-    }
-
-    pendingCandidates = [];
-
-    const answer = await peerConnection.createAnswer();
-
-    await peerConnection.setLocalDescription(answer);
+    chatIdLlamada = pendingOffer.chatId;
+    enLlamada     = true;
 
     window.socket.emit("videoAnswer", {
-        chatId,
-        answer,
+        chatId: pendingOffer.chatId,
         from: window.usuarioId
     });
 
+    setStatus("En llamada ✅");
+    iniciarEnvioFrames(pendingOffer.chatId);
     pendingOffer = null;
-
-    setStatus("Conectando...");
 }
 
 
-// ─────────────────────────────────────────────────────────────
-// RECHAZAR
-// ─────────────────────────────────────────────────────────────
+// ── RECHAZAR LLAMADA ──────────────────────────────────────────
 
 function rechazarLlamada() {
-
     ocultarModal("incomingModal");
-
     if (pendingOffer) {
-
-        window.socket.emit("videoRejected", {
-            chatId: pendingOffer.chatId
-        });
+        window.socket.emit("videoRejected", { chatId: pendingOffer.chatId });
+        pendingOffer = null;
     }
-
-    pendingOffer = null;
 }
 
 
-// ─────────────────────────────────────────────────────────────
-// COLGAR
-// ─────────────────────────────────────────────────────────────
+// ── COLGAR ────────────────────────────────────────────────────
 
 function colgarLlamada() {
-
-    const chatId = window.currentChat ?? currentChat;
-
-    window.socket.emit("videoHangup", { chatId });
-
+    window.socket.emit("videoHangup", { chatId: chatIdLlamada });
     limpiarLlamada();
 }
 
-
-// ─────────────────────────────────────────────────────────────
-// LIMPIAR
-// ─────────────────────────────────────────────────────────────
-
 function limpiarLlamada() {
-
-    if (peerConnection) {
-
-        peerConnection.close();
-
-        peerConnection = null;
-    }
+    enLlamada = false;
+    detenerEnvioFrames();
 
     if (localStream) {
-
-        localStream.getTracks().forEach(track => {
-            track.stop();
-        });
-
+        localStream.getTracks().forEach(t => t.stop());
         localStream = null;
     }
 
-    pendingCandidates = [];
-
-    document.getElementById("localVideo").srcObject = null;
+    document.getElementById("localVideo").srcObject  = null;
     document.getElementById("remoteVideo").srcObject = null;
 
-    ocultarModal("videoModal");
+    // Limpiar imagen del video remoto
+    const rv = document.getElementById("remoteVideo");
+    rv.src = "";
 
+    ocultarModal("videoModal");
     setStatus("Conectando...");
+    chatIdLlamada = null;
+
+    // Resetear botones
+    document.getElementById("btnToggleMic").textContent = "🎤";
+    document.getElementById("btnToggleMic").style.background = "#444";
+    document.getElementById("btnToggleCam").textContent = "📷";
+    document.getElementById("btnToggleCam").style.background = "#444";
+    micActivo = true;
+    camActiva = true;
 }
 
 
-// ─────────────────────────────────────────────────────────────
-// TOGGLES
-// ─────────────────────────────────────────────────────────────
+// ── TOGGLE mic / cam ──────────────────────────────────────────
 
 function toggleMic() {
-
     if (!localStream) return;
-
     micActivo = !micActivo;
-
-    localStream.getAudioTracks().forEach(track => {
-        track.enabled = micActivo;
-    });
+    localStream.getAudioTracks().forEach(t => t.enabled = micActivo);
+    document.getElementById("btnToggleMic").textContent = micActivo ? "🎤" : "🔇";
+    document.getElementById("btnToggleMic").style.background = micActivo ? "#444" : "#c0392b";
 }
 
 function toggleCam() {
-
     if (!localStream) return;
-
     camActiva = !camActiva;
-
-    localStream.getVideoTracks().forEach(track => {
-        track.enabled = camActiva;
-    });
+    localStream.getVideoTracks().forEach(t => t.enabled = camActiva);
+    document.getElementById("btnToggleCam").textContent = camActiva ? "📷" : "🚫";
+    document.getElementById("btnToggleCam").style.background = camActiva ? "#444" : "#c0392b";
 }
 
 
-// ─────────────────────────────────────────────────────────────
-// SOCKET EVENTS
-// ─────────────────────────────────────────────────────────────
+// ── SOCKET: señalización ──────────────────────────────────────
 
-// evitar listeners duplicados
 window.socket.off("videoOffer");
 window.socket.off("videoAnswer");
-window.socket.off("iceCandidate");
+window.socket.off("videoFrame");
 window.socket.off("videoHangup");
 window.socket.off("videoRejected");
 
 
-// OFFER
-window.socket.on("videoOffer", async (data) => {
-
-    console.log("📞 videoOffer recibido");
-
+// Llamada entrante
+window.socket.on("videoOffer", (data) => {
+    if (String(data.from) === String(window.usuarioId)) return;  // ignorar eco
+    console.log("📞 Llamada entrante");
     pendingOffer = data;
-
     mostrarModal("incomingModal");
 });
 
-
-// ANSWER
-window.socket.on("videoAnswer", async (data) => {
-
-    console.log("✅ videoAnswer recibido");
-
-    if (!peerConnection) return;
-
-    try {
-
-        await peerConnection.setRemoteDescription(
-            new RTCSessionDescription(data.answer)
-        );
-
-        // agregar ICE pendientes
-        for (const candidate of pendingCandidates) {
-
-            try {
-
-                await peerConnection.addIceCandidate(
-                    new RTCIceCandidate(candidate)
-                );
-
-            } catch (err) {
-
-                console.error(err);
-            }
-        }
-
-        pendingCandidates = [];
-
-    } catch (err) {
-
-        console.error("Error answer:", err);
-    }
+// El receptor aceptó → el llamante actualiza status
+window.socket.on("videoAnswer", (data) => {
+    if (String(data.from) === String(window.usuarioId)) return;
+    console.log("✅ Llamada aceptada");
+    setStatus("En llamada ✅");
 });
 
+// Frame de video remoto → mostrarlo en <img> dentro del remoteVideo o en un <img> dedicado
+window.socket.on("videoFrame", (data) => {
+    if (String(data.from) === String(window.usuarioId)) return;  // no mostrar el propio
 
-// ICE
-window.socket.on("iceCandidate", async (data) => {
-
-    if (!peerConnection || !data.candidate) return;
-
-    try {
-
-        // TODAVÍA NO HAY REMOTE DESCRIPTION
-        if (!peerConnection.remoteDescription) {
-
-            console.log("🧊 ICE pendiente guardado");
-
-            pendingCandidates.push(data.candidate);
-
-            return;
-        }
-
-        await peerConnection.addIceCandidate(
-            new RTCIceCandidate(data.candidate)
-        );
-
-        console.log("✅ ICE agregado");
-
-    } catch (err) {
-
-        console.error("ICE candidate error:", err);
+    // Usamos un <img> superpuesto sobre el <video> remoto para mostrar los frames
+    let img = document.getElementById("remoteFrameImg");
+    if (!img) {
+        img = document.createElement("img");
+        img.id = "remoteFrameImg";
+        img.style.cssText = "width:100%; height:100%; object-fit:cover; border-radius:12px; display:block;";
+        const remoteContainer = document.getElementById("remoteVideo").parentElement;
+        remoteContainer.style.position = "relative";
+        document.getElementById("remoteVideo").style.display = "none";
+        remoteContainer.appendChild(img);
     }
+    img.src = data.frame;
 });
 
-
-// HANGUP
+// El otro colgó
 window.socket.on("videoHangup", () => {
-
-    console.log("📵 Llamada terminada");
-
+    console.log("📵 Llamada terminada por el otro");
     limpiarLlamada();
+    // Remover img remota si existe
+    document.getElementById("remoteFrameImg")?.remove();
+    document.getElementById("remoteVideo").style.display = "";
 });
 
-
-// REJECT
+// Llamada rechazada
 window.socket.on("videoRejected", () => {
-
     console.log("❌ Llamada rechazada");
-
     limpiarLlamada();
-
     alert("La llamada fue rechazada.");
 });
 
 
-// cleanup navegador
+// Cleanup al cerrar la pestaña
 window.addEventListener("beforeunload", () => {
-
-    if (localStream) {
-
-        localStream.getTracks().forEach(track => {
-            track.stop();
-        });
-    }
+    if (enLlamada) colgarLlamada();
+    if (localStream) localStream.getTracks().forEach(t => t.stop());
 });
