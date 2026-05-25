@@ -31,6 +31,8 @@ let camActiva       = true;
 let pendingOffer    = null;
 let activeChatId    = null;
 
+let pendingCandidates = [];
+
 // ─── Helpers de modal (usan style directo, no classList) ───
 function mostrarVideoModal()    { document.getElementById("videoModal").style.display    = "flex"; }
 function ocultarVideoModal()    { document.getElementById("videoModal").style.display    = "none"; }
@@ -90,21 +92,37 @@ function inicializarSocketVideollamada(socket) {
         }
         try {
             await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+            for (const candidate of pendingCandidates) {
+    try {
+        await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+    } catch (e) {
+        console.error("Error candidate pendiente:", e);
+    }
+}
+pendingCandidates = [];
             document.getElementById("videoStatus").innerText = "En llamada ✅";
         } catch (e) {
             console.error("Error setRemoteDescription:", e);
         }
     });
 
-    socket.on("iceCandidate", async ({ candidate }) => {
-        if (!peerConnection || !candidate) return;
-        try {
-            await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-        } catch (e) {
-            console.error("Error ICE candidate:", e);
-        }
-    });
+socket.on("iceCandidate", async ({ candidate }) => {
+    if (!peerConnection || !candidate) return;
 
+    try {
+        // Esperar remoteDescription
+        if (!peerConnection.remoteDescription) {
+            console.log("🧊 Guardando ICE candidate pendiente");
+            pendingCandidates.push(candidate);
+            return;
+        }
+
+        await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+        console.log("✅ ICE agregado");
+    } catch (e) {
+        console.error("Error ICE candidate:", e);
+    }
+});
     socket.on("videoRejected", () => {
         document.getElementById("videoStatus").innerText = "Llamada rechazada ❌";
         setTimeout(() => limpiarLlamada(), 2000);
@@ -179,7 +197,14 @@ async function aceptarLlamada() {
         await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
         const answer = await peerConnection.createAnswer();
         await peerConnection.setLocalDescription(answer);
-
+for (const candidate of pendingCandidates) {
+    try {
+        await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+    } catch (e) {
+        console.error("Error candidate pendiente:", e);
+    }
+}
+pendingCandidates = [];
         console.log("📤 Enviando videoAnswer al chat:", chatId);
         window.socket.emit("videoAnswer", { chatId, answer, from: usuarioId });
 
