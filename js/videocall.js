@@ -1,218 +1,195 @@
 // ─── WebRTC Video Call ──────────────────────────────────────
+// Sin APIs externas — solo STUN de Google (funciona en misma red o con IPv6)
+const STUN_SERVERS = {
+    iceServers: [
+        { urls: "stun:stun.l.google.com:19302" },
+        { urls: "stun:stun1.l.google.com:19302" },
+        { urls: "stun:stun2.l.google.com:19302" },
+        { urls: "stun:stun3.l.google.com:19302" }
+    ]
+};
+
 let peerConnection  = null;
 let localStream     = null;
 let micActivo       = true;
 let camActiva       = true;
 let pendingOffer    = null;
 let activeChatId    = null;
-let llamandoEnCurso = false;
 
-const getSocket = () => window.socket;
-
-// ─── Elementos del DOM ─────────────────────────────────────
-let videoModal, incomingModal, localVideo, remoteVideo, videoStatus;
-
-function initDOM() {
-    videoModal    = document.getElementById("videoModal");
-    incomingModal = document.getElementById("incomingModal");
-    localVideo    = document.getElementById("localVideo");
-    remoteVideo   = document.getElementById("remoteVideo");
-    videoStatus   = document.getElementById("videoStatus");
-}
-
-async function obtenerIceServers() {
-    try {
-        const res = await fetch(`${API_URL}/api/turn-credentials`, {
-            headers: { Authorization: "Bearer " + localStorage.getItem("token") }
-        });
-        const data = await res.json();
-        
-        // Si Metered devuelve error o no es array, usar fallback
-        if (!Array.isArray(data.iceServers)) {
-            console.warn("⚠ TURN no disponible, usando STUN:", data);
-            return [{ urls: "stun:stun.l.google.com:19302" }];
-        }
-        
-        console.log("🧊 ICE servers:", data.iceServers);
-        return data.iceServers;
-    } catch (e) {
-        console.warn("⚠ Fallback STUN:", e.message);
-        return [{ urls: "stun:stun.l.google.com:19302" }];
-    }
-}
-
-function fallbackIce() {
-    return [
-        { urls: "stun:stun.l.google.com:19302" },
-        { urls: "stun:stun1.l.google.com:19302" }
-    ];
-}
+// ─── Helpers de modal (usan style directo, no classList) ───
+function mostrarVideoModal()    { document.getElementById("videoModal").style.display    = "flex"; }
+function ocultarVideoModal()    { document.getElementById("videoModal").style.display    = "none"; }
+function mostrarIncomingModal() { document.getElementById("incomingModal").style.display = "block"; }
+function ocultarIncomingModal() { document.getElementById("incomingModal").style.display = "none"; }
 
 // ─── Helper: obtener stream con fallback ───────────────────
 async function obtenerStream() {
     try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        console.log("✅ Stream obtenido:", stream.getTracks().map(t => t.kind + ":" + t.label));
-        return stream;
+        const s = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        console.log("✅ Stream video+audio");
+        return s;
     } catch (e) {
-        console.warn("⚠ video+audio falló:", e.name, e.message);
+        console.warn("⚠ video falló, intentando solo audio:", e.message);
     }
     try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
-        console.log("⚠ Fallback: solo audio");
-        return stream;
+        const s = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
+        console.log("⚠ Stream solo audio");
+        return s;
     } catch (e) {
         throw new Error("Sin acceso a cámara ni micrófono: " + e.message);
     }
 }
 
-// ─── 1. INICIAR llamada ──────────────────────────────────────
+// ─── Registrar eventos socket ─────────────────────────────
+// Se llama desde chat.js después de crear el socket
+function inicializarSocketVideollamada(socket) {
+    console.log("📡 Registrando eventos de videollamada en socket:", socket.id);
+
+    socket.on("videoOffer", ({ chatId, offer, from }) => {
+        console.log("📞 videoOffer recibido de", from, "chat:", chatId);
+
+        // Si ya hay llamada en curso, rechazar automáticamente
+        if (peerConnection) {
+            socket.emit("videoRejected", { chatId });
+            return;
+        }
+        pendingOffer = { offer, from, chatId };
+        mostrarIncomingModal();
+    });
+
+    socket.on("videoAnswer", async ({ answer }) => {
+        console.log("✅ videoAnswer recibido");
+        if (!peerConnection) return;
+        try {
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+            document.getElementById("videoStatus").innerText = "En llamada ✅";
+        } catch (e) {
+            console.error("Error setRemoteDescription:", e);
+        }
+    });
+
+    socket.on("iceCandidate", async ({ candidate }) => {
+        if (!peerConnection || !candidate) return;
+        try {
+            await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+        } catch (e) {
+            console.error("Error ICE candidate:", e);
+        }
+    });
+
+    socket.on("videoRejected", () => {
+        document.getElementById("videoStatus").innerText = "Llamada rechazada ❌";
+        setTimeout(() => limpiarLlamada(), 2000);
+    });
+
+    socket.on("videoHangup", () => {
+        console.log("📵 Llamada colgada por el otro");
+        limpiarLlamada();
+    });
+}
+
+// ─── 1. INICIAR llamada ───────────────────────────────────
 async function iniciarLlamada() {
-    if (!currentChat)    { alert("Selecciona un chat primero"); return; }
-    if (peerConnection)  { alert("Ya hay una llamada en curso"); return; }
-    if (llamandoEnCurso) return;
-    llamandoEnCurso = true;
+    if (!currentChat)   { alert("Selecciona un chat primero"); return; }
+    if (peerConnection) { alert("Ya hay una llamada en curso"); return; }
 
     try {
-        getSocket().emit("joinChat", currentChat);
-
-        const iceServers = await obtenerIceServers();
+        // Asegurarse de estar en el room antes de emitir
+        window.socket.emit("joinChat", currentChat);
+        await new Promise(r => setTimeout(r, 200));
 
         localStream = await obtenerStream();
-        localVideo.srcObject = localStream;
-        mostrarModal();
-        videoStatus.innerText = localStream.getVideoTracks().length > 0
-            ? "Llamando..." : "Llamando (solo audio)...";
+        document.getElementById("localVideo").srcObject = localStream;
+        mostrarVideoModal();
+        document.getElementById("videoStatus").innerText =
+            localStream.getVideoTracks().length > 0 ? "Llamando..." : "Llamando (solo audio)...";
 
         activeChatId   = currentChat;
-        peerConnection = crearPeerConnection(activeChatId, iceServers);
+        peerConnection = crearPeerConnection(activeChatId);
         localStream.getTracks().forEach(t => peerConnection.addTrack(t, localStream));
 
         const offer = await peerConnection.createOffer();
         await peerConnection.setLocalDescription(offer);
 
-        getSocket().emit("videoOffer", { chatId: currentChat, offer, from: usuarioId });
+        console.log("📤 Enviando videoOffer al chat:", activeChatId);
+        window.socket.emit("videoOffer", { chatId: activeChatId, offer, from: usuarioId });
 
     } catch (err) {
         console.error("Error iniciando llamada:", err);
         alert(err.message || "No se pudo iniciar la llamada");
         limpiarLlamada();
-    } finally {
-        llamandoEnCurso = false;
     }
 }
 
-// ─── Registrar eventos socket y DOM ────────────────────────
-document.addEventListener("DOMContentLoaded", () => {
-    initDOM();
-
-    window.socket.on("videoOffer", ({ chatId, offer, from }) => {
-        console.log("📞 videoOffer recibido, chatId:", chatId);
-        if (peerConnection) {
-            getSocket().emit("videoRejected", { chatId });
-            return;
-        }
-        pendingOffer = { offer, from, chatId };
-        incomingModal.classList.add("visible");
-    });
-
-    window.socket.on("videoAnswer", async ({ answer }) => {
-        if (!peerConnection) return;
-        try {
-            await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-            videoStatus.innerText = "En llamada ✅";
-        } catch (e) {
-            console.error("Error setRemoteDescription (answer):", e);
-        }
-    });
-
-    window.socket.on("iceCandidate", async ({ candidate }) => {
-        if (!peerConnection || !candidate) return;
-        try {
-            await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-        } catch (err) {
-            console.error("Error ICE candidate:", err);
-        }
-    });
-
-    window.socket.on("videoRejected", () => {
-        videoStatus.innerText = "Llamada rechazada ❌";
-        setTimeout(() => limpiarLlamada(), 2000);
-    });
-
-    window.socket.on("videoHangup", () => {
-        limpiarLlamada();
-    });
-});
-
-// ─── 3. ACEPTAR llamada ──────────────────────────────────────
+// ─── 3. ACEPTAR llamada ───────────────────────────────────
 async function aceptarLlamada() {
-    incomingModal.classList.remove("visible");
+    ocultarIncomingModal();
     if (!pendingOffer) return;
 
     const { offer, chatId } = pendingOffer;
     pendingOffer = null;
 
-    currentChat = chatId;
-    getSocket().emit("joinChat", chatId);
-    await new Promise(resolve => setTimeout(resolve, 300));
+    // Cambiar al chat de la llamada
+    currentChat  = chatId;
+    activeChatId = chatId;
+    window.socket.emit("joinChat", chatId);
+    document.getElementById("chatTitle").innerText = "Chat #" + chatId;
+    await new Promise(r => setTimeout(r, 300));
 
     try {
-        const iceServers = await obtenerIceServers();
-
         localStream = await obtenerStream();
-        localVideo.srcObject = localStream;
-        mostrarModal();
-        videoStatus.innerText = "Conectando...";
+        document.getElementById("localVideo").srcObject = localStream;
+        mostrarVideoModal();
+        document.getElementById("videoStatus").innerText = "Conectando...";
 
-        activeChatId   = chatId;
-        peerConnection = crearPeerConnection(activeChatId, iceServers);
+        peerConnection = crearPeerConnection(activeChatId);
         localStream.getTracks().forEach(t => peerConnection.addTrack(t, localStream));
 
         await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
         const answer = await peerConnection.createAnswer();
         await peerConnection.setLocalDescription(answer);
 
-        getSocket().emit("videoAnswer", { chatId, answer, from: usuarioId });
+        console.log("📤 Enviando videoAnswer al chat:", chatId);
+        window.socket.emit("videoAnswer", { chatId, answer, from: usuarioId });
 
     } catch (err) {
-        console.error("Error al aceptar llamada:", err);
+        console.error("Error aceptando llamada:", err);
         alert(err.message || "No se pudo conectar la llamada");
         limpiarLlamada();
     }
 }
 
-// ─── 4. RECHAZAR llamada ─────────────────────────────────────
+// ─── 4. RECHAZAR llamada ──────────────────────────────────
 function rechazarLlamada() {
-    incomingModal.classList.remove("visible");
+    ocultarIncomingModal();
     if (pendingOffer) {
-        getSocket().emit("videoRejected", { chatId: pendingOffer.chatId });
+        window.socket.emit("videoRejected", { chatId: pendingOffer.chatId });
         pendingOffer = null;
     }
 }
 
-// ─── 9. COLGAR ───────────────────────────────────────────────
+// ─── 8. COLGAR ────────────────────────────────────────────
 function colgarLlamada() {
-    if (activeChatId) getSocket().emit("videoHangup", { chatId: activeChatId });
+    if (activeChatId) window.socket.emit("videoHangup", { chatId: activeChatId });
     limpiarLlamada();
 }
 
 function limpiarLlamada() {
-    llamandoEnCurso = false;
     if (peerConnection) { peerConnection.close(); peerConnection = null; }
     if (localStream)    { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
-    if (remoteVideo?.srcObject) {
-        remoteVideo.srcObject.getTracks().forEach(t => t.stop());
-        remoteVideo.srcObject = null;
-    }
-    if (localVideo) localVideo.srcObject = null;
+
+    const rv = document.getElementById("remoteVideo");
+    const lv = document.getElementById("localVideo");
+    if (rv) rv.srcObject = null;
+    if (lv) lv.srcObject = null;
+
     activeChatId = null;
-    if (videoModal)  videoModal.classList.remove("visible");
-    if (videoStatus) videoStatus.innerText = "Conectando...";
-    document.getElementById("btnActivarAudio")?.remove();
+    ocultarVideoModal();
+    const vs = document.getElementById("videoStatus");
+    if (vs) vs.innerText = "Conectando...";
 }
 
-// ─── Toggle mic / cam ────────────────────────────────────────
+// ─── Toggle mic / cam ─────────────────────────────────────
 function toggleMic() {
     if (!localStream) return;
     micActivo = !micActivo;
@@ -227,79 +204,60 @@ function toggleCam() {
     document.getElementById("btnToggleCam").style.background = camActiva ? "#444" : "#e74c3c";
 }
 
-// ─── Crear PeerConnection con iceServers dinámicos ────────
-function crearPeerConnection(chatId, iceServers) {
-    const pc = new RTCPeerConnection({ iceServers });
-
-    pc.ontrack = ({ track, streams }) => {
-        console.log("🎬 ontrack recibido, kind:", track.kind);
-
-        if (streams?.[0]) {
-            if (remoteVideo.srcObject !== streams[0]) {
-                remoteVideo.srcObject = streams[0];
-                console.log("✅ srcObject asignado desde streams[0]");
-            }
-        } else {
-            if (!remoteVideo.srcObject) remoteVideo.srcObject = new MediaStream();
-            remoteVideo.srcObject.addTrack(track);
-        }
-
-        const tryPlay = () => {
-            remoteVideo.play().then(() => {
-                remoteVideo.muted = false;
-            }).catch(e => {
-                if (e.name === "AbortError") {
-                    setTimeout(tryPlay, 200);
-                } else {
-                    console.warn("⚠ play() bloqueado:", e.message);
-                    mostrarBotonActivarAudio();
-                }
-            });
-        };
-        tryPlay();
-
-        if (track.kind === "video") videoStatus.innerText = "En llamada ✅";
-    };
+// ─── Crear PeerConnection ─────────────────────────────────
+function crearPeerConnection(chatId) {
+    const pc = new RTCPeerConnection(STUN_SERVERS);
 
     pc.onicecandidate = ({ candidate }) => {
-        if (candidate && chatId) getSocket().emit("iceCandidate", { chatId, candidate });
+        if (candidate) {
+            window.socket.emit("iceCandidate", { chatId, candidate });
+        }
+    };
+
+    pc.ontrack = ({ track, streams }) => {
+        console.log("🎬 ontrack:", track.kind);
+        const rv = document.getElementById("remoteVideo");
+
+        if (streams?.[0]) {
+            rv.srcObject = streams[0];
+        } else {
+            if (!rv.srcObject) rv.srcObject = new MediaStream();
+            rv.srcObject.addTrack(track);
+        }
+
+        // Autoplay con fallback manual
+        rv.play().catch(e => {
+            console.warn("autoplay bloqueado:", e.message);
+            // Mostrar botón para activar manualmente
+            if (!document.getElementById("btnPlay")) {
+                const btn = document.createElement("button");
+                btn.id = "btnPlay";
+                btn.innerText = "▶ Tap para ver video";
+                btn.style.cssText = "position:fixed;bottom:130px;left:50%;transform:translateX(-50%);z-index:1100;padding:12px 24px;background:#5865f2;color:white;border:none;border-radius:10px;font-size:15px;cursor:pointer;width:auto;min-height:unset;";
+                btn.onclick = () => { rv.play(); btn.remove(); };
+                document.body.appendChild(btn);
+            }
+        });
+
+        if (track.kind === "video") {
+            document.getElementById("videoStatus").innerText = "En llamada ✅";
+        }
     };
 
     pc.onconnectionstatechange = () => {
-        console.log("🔗 WebRTC state:", pc.connectionState);
-        if (pc.connectionState === "connected") videoStatus.innerText = "En llamada ✅";
-        if (pc.connectionState === "disconnected" || pc.connectionState === "failed") {
-            videoStatus.innerText = "Conexión perdida ❌";
+        console.log("🔗 WebRTC:", pc.connectionState);
+        if (pc.connectionState === "connected") {
+            document.getElementById("videoStatus").innerText = "En llamada ✅";
+        }
+        if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
+            document.getElementById("videoStatus").innerText = "Conexión perdida ❌";
             setTimeout(() => limpiarLlamada(), 3000);
         }
     };
 
-    pc.onicegatheringstatechange = () => console.log("🧊 ICE gathering:", pc.iceGatheringState);
-    pc.onsignalingstatechange    = () => console.log("📡 Signaling state:", pc.signalingState);
+    pc.onicegatheringstatechange = () => console.log("🧊 ICE:", pc.iceGatheringState);
 
     return pc;
-}
-
-function mostrarModal() { videoModal.classList.add("visible"); }
-
-function mostrarBotonActivarAudio() {
-    if (document.getElementById("btnActivarAudio")) return;
-    const btn = document.createElement("button");
-    btn.id = "btnActivarAudio";
-    btn.innerText = "▶ Activar video/audio";
-    btn.style.cssText = [
-        "position:fixed", "bottom:120px", "left:50%",
-        "transform:translateX(-50%)", "z-index:1100",
-        "padding:12px 28px", "background:#5865f2",
-        "color:white", "border:none", "border-radius:10px",
-        "font-size:15px", "cursor:pointer"
-    ].join(";");
-    btn.onclick = () => {
-        remoteVideo.muted = false;
-        remoteVideo.play().catch(e => console.warn("play manual falló:", e.message));
-        btn.remove();
-    };
-    document.body.appendChild(btn);
 }
 
 window.addEventListener("beforeunload", () => {
