@@ -26,6 +26,13 @@ async function obtenerIceServers() {
             headers: { Authorization: "Bearer " + localStorage.getItem("token") }
         });
         const data = await res.json();
+        
+        // Si Metered devuelve error o no es array, usar fallback
+        if (!Array.isArray(data.iceServers)) {
+            console.warn("⚠ TURN no disponible, usando STUN:", data);
+            return [{ urls: "stun:stun.l.google.com:19302" }];
+        }
+        
         console.log("🧊 ICE servers:", data.iceServers);
         return data.iceServers;
     } catch (e) {
