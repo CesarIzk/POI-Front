@@ -2,16 +2,33 @@
 const ICE_SERVERS = {
     iceServers: [
         { urls: "stun:stun.l.google.com:19302" },
-        { urls: "stun:stun1.l.google.com:19302" }
+        { urls: "stun:stun1.l.google.com:19302" },
+        // TURN público gratuito (Open Relay) — evita el connectionState:failed
+        {
+            urls: "turn:openrelay.metered.ca:80",
+            username: "openrelayproject",
+            credential: "openrelayproject"
+        },
+        {
+            urls: "turn:openrelay.metered.ca:443",
+            username: "openrelayproject",
+            credential: "openrelayproject"
+        },
+        {
+            urls: "turn:openrelay.metered.ca:443?transport=tcp",
+            username: "openrelayproject",
+            credential: "openrelayproject"
+        }
     ]
 };
 
-let peerConnection = null;
-let localStream    = null;
-let micActivo      = true;
-let camActiva      = true;
-let pendingOffer   = null;
-let activeChatId   = null;
+let peerConnection  = null;
+let localStream     = null;
+let micActivo       = true;
+let camActiva       = true;
+let pendingOffer    = null;
+let activeChatId    = null;
+let llamandoEnCurso = false;   // ← FIX: evita doble click
 
 const getSocket = () => window.socket;
 
@@ -37,14 +54,6 @@ async function obtenerStream() {
     }
 
     try {
-        const streamSoloVideo = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-        console.log("✅ Solo video funciona");
-        streamSoloVideo.getTracks().forEach(t => t.stop());
-    } catch (e) {
-        console.warn("⚠ solo video también falla:", e.name, e.message);
-    }
-
-    try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
         console.log("⚠ Fallback: solo audio");
         return stream;
@@ -55,16 +64,15 @@ async function obtenerStream() {
 
 // ─── 1. INICIAR llamada ──────────────────────────────────────
 async function iniciarLlamada() {
-    if (!currentChat) {
-        alert("Selecciona un chat primero");
-        return;
-    }
-    if (peerConnection) {
-        alert("Ya hay una llamada en curso");
-        return;
-    }
+    if (!currentChat) { alert("Selecciona un chat primero"); return; }
+    if (peerConnection) { alert("Ya hay una llamada en curso"); return; }
+    if (llamandoEnCurso) return;  // ← FIX: bloquea doble click
+    llamandoEnCurso = true;
 
     try {
+        // Garantizar que el caller esté en la sala
+        getSocket().emit("joinChat", currentChat);
+
         localStream = await obtenerStream();
         localVideo.srcObject = localStream;
         mostrarModal();
@@ -84,6 +92,8 @@ async function iniciarLlamada() {
         console.error("Error iniciando llamada:", err);
         alert(err.message || "No se pudo iniciar la llamada");
         limpiarLlamada();
+    } finally {
+        llamandoEnCurso = false;  // ← siempre se desbloquea
     }
 }
 
@@ -107,8 +117,12 @@ document.addEventListener("DOMContentLoaded", () => {
     // ─── 5. RECIBIR answer ──────────────────────────────────
     window.socket.on("videoAnswer", async ({ answer }) => {
         if (!peerConnection) return;
-        await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-        videoStatus.innerText = "En llamada ✅";
+        try {
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+            videoStatus.innerText = "En llamada ✅";
+        } catch (e) {
+            console.error("Error setRemoteDescription (answer):", e);
+        }
     });
 
     // ─── 6. ICE candidates ──────────────────────────────────
@@ -133,6 +147,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 });
 
+// ─── 3. ACEPTAR llamada ──────────────────────────────────────
 async function aceptarLlamada() {
     incomingModal.classList.remove("visible");
     if (!pendingOffer) return;
@@ -140,12 +155,8 @@ async function aceptarLlamada() {
     const { offer, chatId } = pendingOffer;
     pendingOffer = null;
 
-    // Siempre hacer joinChat, aunque ya estés en el chat
-    // El servidor no duplica, pero garantiza que estás en la sala
     currentChat = chatId;
     getSocket().emit("joinChat", chatId);
-
-    // Pequeño delay para que el joinChat se procese en el servidor
     await new Promise(resolve => setTimeout(resolve, 300));
 
     try {
@@ -170,6 +181,7 @@ async function aceptarLlamada() {
         limpiarLlamada();
     }
 }
+
 // ─── 4. RECHAZAR llamada ─────────────────────────────────────
 function rechazarLlamada() {
     incomingModal.classList.remove("visible");
@@ -188,6 +200,8 @@ function colgarLlamada() {
 }
 
 function limpiarLlamada() {
+    llamandoEnCurso = false;
+
     if (peerConnection) {
         peerConnection.close();
         peerConnection = null;
@@ -230,41 +244,36 @@ function toggleCam() {
 function crearPeerConnection(chatId) {
     const pc = new RTCPeerConnection(ICE_SERVERS);
 
-    // FIX: NO asignar srcObject vacío aquí — esperar a que lleguen los tracks
-    const remoteStream = new MediaStream();
-
     pc.ontrack = ({ track, streams }) => {
         console.log("🎬 ontrack recibido, kind:", track.kind);
 
-        // FIX 1: Usar el stream que viene con el track si existe
-        // Esto garantiza que audio y video están en el mismo stream
         if (streams && streams[0]) {
             if (remoteVideo.srcObject !== streams[0]) {
                 remoteVideo.srcObject = streams[0];
                 console.log("✅ srcObject asignado desde streams[0]");
             }
         } else {
-            // Fallback: construir stream manualmente
-            remoteStream.addTrack(track);
-            remoteVideo.srcObject = remoteStream;
+            if (!remoteVideo.srcObject) remoteVideo.srcObject = new MediaStream();
+            remoteVideo.srcObject.addTrack(track);
         }
 
-        // FIX 2: Llamar play() aquí, después de asignar srcObject
-        // El navegador puede bloquear autoplay; mostramos botón como fallback
-        remoteVideo.play().then(() => {
-            remoteVideo.muted = false;
-            console.log("▶ remoteVideo.play() OK");
-        }).catch(e => {
-            console.warn("⚠ play() bloqueado (autoplay policy):", e.message);
-            mostrarBotonActivarAudio();
-        });
+        // FIX play(): sólo llamar cuando el elemento está listo
+        const tryPlay = () => {
+            remoteVideo.play().then(() => {
+                remoteVideo.muted = false;
+            }).catch(e => {
+                if (e.name === "AbortError") {
+                    // Otro load interrumpió — reintentar brevemente
+                    setTimeout(tryPlay, 200);
+                } else {
+                    console.warn("⚠ play() bloqueado:", e.message);
+                    mostrarBotonActivarAudio();
+                }
+            });
+        };
+        tryPlay();
 
-        if (track.kind === "video") {
-            videoStatus.innerText = "En llamada ✅";
-        }
-        if (track.kind === "audio" && !(streams?.[0]?.getVideoTracks().length)) {
-            videoStatus.innerText = "En llamada (solo audio) ✅";
-        }
+        if (track.kind === "video") videoStatus.innerText = "En llamada ✅";
     };
 
     pc.onicecandidate = ({ candidate }) => {
@@ -284,13 +293,8 @@ function crearPeerConnection(chatId) {
         }
     };
 
-    pc.onicegatheringstatechange = () => {
-        console.log("🧊 ICE gathering:", pc.iceGatheringState);
-    };
-
-    pc.onsignalingstatechange = () => {
-        console.log("📡 Signaling state:", pc.signalingState);
-    };
+    pc.onicegatheringstatechange = () => console.log("🧊 ICE gathering:", pc.iceGatheringState);
+    pc.onsignalingstatechange   = () => console.log("📡 Signaling state:", pc.signalingState);
 
     return pc;
 }
@@ -305,19 +309,11 @@ function mostrarBotonActivarAudio() {
     btn.id = "btnActivarAudio";
     btn.innerText = "▶ Activar video/audio";
     btn.style.cssText = [
-        "position:fixed",
-        "bottom:120px",
-        "left:50%",
-        "transform:translateX(-50%)",
-        "z-index:1100",
-        "padding:12px 28px",
-        "background:#5865f2",
-        "color:white",
-        "border:none",
-        "border-radius:10px",
-        "font-size:15px",
-        "cursor:pointer",
-        "width:auto"
+        "position:fixed", "bottom:120px", "left:50%",
+        "transform:translateX(-50%)", "z-index:1100",
+        "padding:12px 28px", "background:#5865f2",
+        "color:white", "border:none", "border-radius:10px",
+        "font-size:15px", "cursor:pointer", "width:auto"
     ].join(";");
     btn.onclick = () => {
         remoteVideo.muted = false;
@@ -327,7 +323,6 @@ function mostrarBotonActivarAudio() {
     document.body.appendChild(btn);
 }
 
-// Liberar cámara al cerrar/recargar la página
 window.addEventListener("beforeunload", () => {
     if (localStream) localStream.getTracks().forEach(t => t.stop());
 });
