@@ -143,31 +143,45 @@ async function crearChatConUsuario() {
 
     try {
         const token = localStorage.getItem("token");
-        const body = { nombre };
 
-        // Si hay usuario seleccionado lo mandamos también (el backend puede usarlo o ignorarlo)
-        if (usuarioSeleccionado) body.usuarioDestino = usuarioSeleccionado.id;
+        // Solo enviamos `nombre` — el backend (SP_CrearChat) no acepta usuarioDestino
+        // Si en el futuro quieres agregar participantes, hazlo en una llamada separada
+        const body = { nombre };
 
         const res = await fetch(API_URL + "/api/chats", {
             method: "POST",
             headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
             body: JSON.stringify(body)
         });
-        const data = await res.json();
 
-        // El backend puede devolver id_chat o IdChat
-        const idChat = data.IdChat ?? data.id_chat;
+        // Verificar que la respuesta HTTP sea exitosa antes de parsear JSON
+        if (!res.ok) {
+            const texto = await res.text();
+            console.error("HTTP error al crear chat:", res.status, texto);
+            errorDiv.textContent = `Error del servidor (${res.status})`;
+            errorDiv.style.display = "block";
+            return;
+        }
+
+        const data = await res.json();
+        console.log("Respuesta al crear chat:", data); // 👈 útil para depurar
+
+        // El backend devuelve id_chat (minúsculas), pero cubrimos ambas variantes
+        const idChat = data.id_chat ?? data.IdChat ?? data.id ?? null;
 
         if (data.success && idChat) {
             cerrarModalNuevoChat();
             await cargarChats();
             abrirChat(idChat, nombre);
         } else {
-            errorDiv.textContent = data.message || "No se pudo crear el chat";
+            // Mostrar el mensaje exacto que devuelve el backend
+            errorDiv.textContent = data.message || `No se pudo crear el chat (id: ${idChat})`;
             errorDiv.style.display = "block";
         }
     } catch (err) {
-        errorDiv.textContent = "Error al conectar con el servidor";
+        // Error de red o JSON inválido
+        console.error("Excepción al crear chat:", err);
+        errorDiv.textContent = "Error de red al conectar con el servidor";
         errorDiv.style.display = "block";
     } finally {
         btn.textContent = "Crear Chat";
