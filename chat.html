@@ -191,42 +191,63 @@
             });
         });
 
+        // Cache para no re-fetch en cada tecla
+        let _todosLosUsuarios = null;
+
+        async function cargarTodosLosUsuarios() {
+            if (_todosLosUsuarios) return _todosLosUsuarios;
+            const token = localStorage.getItem("token");
+            const res = await fetch(API_URL + "/api/chats/users", {
+                headers: { "Authorization": "Bearer " + token }
+            });
+            const data = await res.json();
+            // Excluir al usuario actual
+            _todosLosUsuarios = (data || []).filter(u => (u.IdUsuario ?? u.id) != window.usuarioId);
+            return _todosLosUsuarios;
+        }
+
         async function buscarUsuario() {
             clearTimeout(buscarTimeout);
-            const alias = document.getElementById("buscarAliasInput").value.trim();
+            const texto = document.getElementById("buscarAliasInput").value.trim().toLowerCase();
             const resultado = document.getElementById("resultadoBusqueda");
 
-            if (alias.length < 2) { resultado.innerHTML = ""; return; }
+            if (texto.length < 2) { resultado.innerHTML = ""; return; }
 
             buscarTimeout = setTimeout(async () => {
                 resultado.innerHTML = "<span style=\"color:#888; font-size:13px;\">Buscando...</span>";
                 try {
-                    const token = localStorage.getItem("token");
-                    const res = await fetch(API_URL + "/api/usuarios/buscar?alias=" + encodeURIComponent(alias), {
-                        headers: { "Authorization": "Bearer " + token }
-                    });
-                    const data = await res.json();
+                    const todos = await cargarTodosLosUsuarios();
 
-                    if (!data || data.length === 0) {
+                    const filtrados = todos.filter(u =>
+                        (u.Alias || u.alias || "").toLowerCase().includes(texto) ||
+                        (u.Nombre || u.nombre || "").toLowerCase().includes(texto)
+                    );
+
+                    if (filtrados.length === 0) {
                         resultado.innerHTML = "<span style=\"color:#e74c3c; font-size:13px;\">No se encontró ningún usuario</span>";
                         return;
                     }
 
                     resultado.innerHTML = "";
-                    data.slice(0, 5).forEach(u => {
+                    filtrados.slice(0, 5).forEach(u => {
+                        const id     = u.IdUsuario ?? u.id;
+                        const alias  = u.Alias  ?? u.alias  ?? "?";
+                        const nombre = u.Nombre ?? u.nombre ?? "";
+
                         const div = document.createElement("div");
                         div.className = "usuario-resultado";
                         div.innerHTML =
-                            "<div class=\"avatar\">" + u.alias[0].toUpperCase() + "</div>" +
-                            "<div><strong>" + u.alias + "</strong>" +
-                            "<div style=\"font-size:12px; color:#888;\">" + (u.nombre || "") + "</div></div>";
-                        div.onclick = () => seleccionarUsuario(u, div);
+                            "<div class=\"avatar\">" + alias[0].toUpperCase() + "</div>" +
+                            "<div><strong>" + alias + "</strong>" +
+                            "<div style=\"font-size:12px; color:#888;\">" + nombre + "</div></div>";
+                        div.onclick = () => seleccionarUsuario({ id, alias, nombre }, div);
                         resultado.appendChild(div);
                     });
                 } catch (err) {
+                    console.error(err);
                     resultado.innerHTML = "<span style=\"color:#e74c3c; font-size:13px;\">Error al buscar</span>";
                 }
-            }, 400);
+            }, 300);
         }
 
         function seleccionarUsuario(usuario, elem) {
