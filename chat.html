@@ -5,6 +5,51 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Chat - POI</title>
     <link rel="stylesheet" href="css/style.css">
+    <style>
+        .sidebar-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 4px 12px;
+        }
+        .sidebar-header h2 { margin: 0; }
+        #btnNuevoChat {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            border: none;
+            background: #5865f2;
+            color: white;
+            font-size: 20px;
+            line-height: 1;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s, transform 0.15s;
+        }
+        #btnNuevoChat:hover { background: #4752c4; transform: scale(1.1); }
+        #modalNuevoChat.open { display: flex !important; }
+        .usuario-resultado {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 10px;
+            border-radius: 8px;
+            background: #2a2a3e;
+            cursor: pointer;
+            border: 1px solid transparent;
+            transition: border-color 0.15s;
+        }
+        .usuario-resultado.seleccionado { border-color: #5865f2; }
+        .usuario-resultado .avatar {
+            width: 32px; height: 32px;
+            border-radius: 50%;
+            background: #5865f2;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: bold; font-size: 14px;
+        }
+    </style>
 </head>
 <body class="chat-layout">
 
@@ -15,9 +60,35 @@
     </nav>
 
     <aside class="chats-sidebar">
-        <h2>Chats</h2>
+        <div class="sidebar-header">
+            <h2>Chats</h2>
+            <button id="btnNuevoChat" onclick="abrirModalNuevoChat()" title="Nuevo chat / Agregar amigo">＋</button>
+        </div>
         <div id="chatList"></div>
     </aside>
+
+    <!-- Modal: Nuevo chat / Agregar amigo -->
+    <div id="modalNuevoChat" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:2000; align-items:center; justify-content:center;">
+        <div style="background:#1e1e2e; border:1px solid #444; border-radius:14px; padding:28px 32px; width:340px; color:white; box-shadow:0 8px 32px rgba(0,0,0,0.6);">
+            <h3 style="margin:0 0 6px; font-size:17px;">➕ Nuevo Chat</h3>
+            <p style="margin:0 0 18px; font-size:13px; color:#aaa;">Busca un usuario por su alias para iniciar un chat.</p>
+
+            <input
+                type="text"
+                id="buscarAliasInput"
+                placeholder="Alias del usuario..."
+                style="width:100%; padding:10px 12px; border-radius:8px; border:1px solid #555; background:#12121f; color:white; font-size:14px; box-sizing:border-box; margin-bottom:10px;"
+                oninput="buscarUsuario()"
+            >
+
+            <div id="resultadoBusqueda" style="margin-bottom:14px; min-height:36px; font-size:14px; color:#ccc;"></div>
+
+            <div style="display:flex; gap:10px; justify-content:flex-end;">
+                <button onclick="cerrarModalNuevoChat()" style="padding:8px 18px; border-radius:8px; border:1px solid #555; background:transparent; color:#aaa; cursor:pointer;">Cancelar</button>
+                <button id="btnCrearChat" onclick="crearChatConUsuario()" disabled style="padding:8px 18px; border-radius:8px; border:none; background:#5865f2; color:white; cursor:pointer; font-weight:bold; opacity:0.5;">Iniciar Chat</button>
+            </div>
+        </div>
+    </div>
 
     <main class="chat-window">
         <header class="chat-header">
@@ -95,6 +166,106 @@
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <script src="js/chat.js"></script>
     <script src="js/videocall.js"></script>
+
+    <script>
+        let usuarioSeleccionado = null;
+        let buscarTimeout = null;
+
+        function abrirModalNuevoChat() {
+            usuarioSeleccionado = null;
+            document.getElementById("buscarAliasInput").value = "";
+            document.getElementById("resultadoBusqueda").innerHTML = "";
+            document.getElementById("btnCrearChat").disabled = true;
+            document.getElementById("btnCrearChat").style.opacity = "0.5";
+            document.getElementById("modalNuevoChat").classList.add("open");
+            setTimeout(() => document.getElementById("buscarAliasInput").focus(), 100);
+        }
+
+        function cerrarModalNuevoChat() {
+            document.getElementById("modalNuevoChat").classList.remove("open");
+        }
+
+        document.addEventListener("DOMContentLoaded", () => {
+            document.getElementById("modalNuevoChat").addEventListener("click", function(e) {
+                if (e.target === this) cerrarModalNuevoChat();
+            });
+        });
+
+        async function buscarUsuario() {
+            clearTimeout(buscarTimeout);
+            const alias = document.getElementById("buscarAliasInput").value.trim();
+            const resultado = document.getElementById("resultadoBusqueda");
+
+            if (alias.length < 2) { resultado.innerHTML = ""; return; }
+
+            buscarTimeout = setTimeout(async () => {
+                resultado.innerHTML = "<span style=\"color:#888; font-size:13px;\">Buscando...</span>";
+                try {
+                    const token = localStorage.getItem("token");
+                    const res = await fetch(API_URL + "/api/usuarios/buscar?alias=" + encodeURIComponent(alias), {
+                        headers: { "Authorization": "Bearer " + token }
+                    });
+                    const data = await res.json();
+
+                    if (!data || data.length === 0) {
+                        resultado.innerHTML = "<span style=\"color:#e74c3c; font-size:13px;\">No se encontró ningún usuario</span>";
+                        return;
+                    }
+
+                    resultado.innerHTML = "";
+                    data.slice(0, 5).forEach(u => {
+                        const div = document.createElement("div");
+                        div.className = "usuario-resultado";
+                        div.innerHTML =
+                            "<div class=\"avatar\">" + u.alias[0].toUpperCase() + "</div>" +
+                            "<div><strong>" + u.alias + "</strong>" +
+                            "<div style=\"font-size:12px; color:#888;\">" + (u.nombre || "") + "</div></div>";
+                        div.onclick = () => seleccionarUsuario(u, div);
+                        resultado.appendChild(div);
+                    });
+                } catch (err) {
+                    resultado.innerHTML = "<span style=\"color:#e74c3c; font-size:13px;\">Error al buscar</span>";
+                }
+            }, 400);
+        }
+
+        function seleccionarUsuario(usuario, elem) {
+            usuarioSeleccionado = usuario;
+            document.querySelectorAll(".usuario-resultado").forEach(el => el.classList.remove("seleccionado"));
+            elem.classList.add("seleccionado");
+            document.getElementById("btnCrearChat").disabled = false;
+            document.getElementById("btnCrearChat").style.opacity = "1";
+        }
+
+        async function crearChatConUsuario() {
+            if (!usuarioSeleccionado) return;
+            const btn = document.getElementById("btnCrearChat");
+            btn.textContent = "Creando...";
+            btn.disabled = true;
+            try {
+                const token = localStorage.getItem("token");
+                const res = await fetch(API_URL + "/api/chats", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
+                    body: JSON.stringify({ usuarioDestino: usuarioSeleccionado.id })
+                });
+                const data = await res.json();
+                if (data && data.IdChat) {
+                    cerrarModalNuevoChat();
+                    await cargarChats();
+                    abrirChat(data.IdChat, usuarioSeleccionado.alias);
+                } else {
+                    alert(data.message || "No se pudo crear el chat");
+                }
+            } catch (err) {
+                alert("Error al crear el chat");
+            } finally {
+                btn.textContent = "Iniciar Chat";
+                btn.disabled = false;
+                btn.style.opacity = "1";
+            }
+        }
+    </script>
 
 </body>
 </html>
