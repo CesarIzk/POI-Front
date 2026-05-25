@@ -133,7 +133,6 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 });
 
-// ─── 3. ACEPTAR llamada ──────────────────────────────────────
 async function aceptarLlamada() {
     incomingModal.classList.remove("visible");
     if (!pendingOffer) return;
@@ -141,11 +140,13 @@ async function aceptarLlamada() {
     const { offer, chatId } = pendingOffer;
     pendingOffer = null;
 
-    if (parseInt(chatId) !== parseInt(currentChat)) {
-        currentChat = chatId;
-        getSocket().emit("joinChat", chatId);
-        document.getElementById("chatTitle").innerText = "Chat #" + chatId;
-    }
+    // Siempre hacer joinChat, aunque ya estés en el chat
+    // El servidor no duplica, pero garantiza que estás en la sala
+    currentChat = chatId;
+    getSocket().emit("joinChat", chatId);
+
+    // Pequeño delay para que el joinChat se procese en el servidor
+    await new Promise(resolve => setTimeout(resolve, 300));
 
     try {
         localStream = await obtenerStream();
@@ -169,7 +170,6 @@ async function aceptarLlamada() {
         limpiarLlamada();
     }
 }
-
 // ─── 4. RECHAZAR llamada ─────────────────────────────────────
 function rechazarLlamada() {
     incomingModal.classList.remove("visible");
