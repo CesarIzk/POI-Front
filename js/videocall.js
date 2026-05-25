@@ -64,6 +64,11 @@ async function obtenerStream() {
 
 // ─── 1. INICIAR llamada ──────────────────────────────────────
 async function iniciarLlamada() {
+    const turnRes = await fetch(`${API_URL}/api/turn-credentials`, {
+    headers: { Authorization: "Bearer " + localStorage.getItem("token") }
+});
+const { iceServers } = await turnRes.json();
+peerConnection = new RTCPeerConnection({ iceServers });
     if (!currentChat) { alert("Selecciona un chat primero"); return; }
     if (peerConnection) { alert("Ya hay una llamada en curso"); return; }
     if (llamandoEnCurso) return;  // ← FIX: bloquea doble click
@@ -149,6 +154,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
 // ─── 3. ACEPTAR llamada ──────────────────────────────────────
 async function aceptarLlamada() {
+    const turnRes = await fetch(`${API_URL}/api/turn-credentials`, {
+    headers: { Authorization: "Bearer " + localStorage.getItem("token") }
+});
+const { iceServers } = await turnRes.json();
+peerConnection = new RTCPeerConnection({ iceServers });
     incomingModal.classList.remove("visible");
     if (!pendingOffer) return;
 
