@@ -1,5 +1,5 @@
 // 🔧 Cambia esta URL por la de tu backend en Railway
-const API_URL = "https://poi-back-production.up.railway.app";
+const API_URL = "poi-back-production-7931.up.railway.app";
 
 document.getElementById("loginForm").addEventListener("submit", async (e) => {
     e.preventDefault();
