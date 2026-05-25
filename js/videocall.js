@@ -95,13 +95,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
         pendingOffer = { offer, from, chatId };
 
-        // FIX Bug 1 + Bug 2: forzar display con setAttribute para saltarse CSS
-        incomingModal.setAttribute("style", "display:block !important");
-        // Fallback para navegadores que ignoran !important en style attr
-        incomingModal.style.setProperty("display", "block", "important");
-        incomingModal.style.visibility = "visible";
-        incomingModal.style.opacity    = "1";
-        incomingModal.style.zIndex     = "9999";
+    incomingModal.classList.add("visible");
+
     });
 
     window.socket.on("videoAnswer", async ({ answer }) => {
@@ -133,9 +128,8 @@ document.addEventListener("DOMContentLoaded", () => {
 // FIX iOS Bug: aceptarLlamada se llama desde un tap/click del usuario,
 // lo que satisface el requisito de "user gesture" de iOS para getUserMedia
 async function aceptarLlamada() {
-    // Ocultar modal de forma definitiva
-    incomingModal.style.setProperty("display", "none", "important");
-    incomingModal.style.display = "none";
+   incomingModal.classList.remove("visible");
+
 
     if (!pendingOffer) return;
     const { offer, chatId } = pendingOffer;
@@ -175,8 +169,8 @@ async function aceptarLlamada() {
 
 // ─── 4. RECHAZAR llamada ─────────────────────────────────────
 function rechazarLlamada() {
-    incomingModal.style.setProperty("display", "none", "important");
-    incomingModal.style.display = "none";
+incomingModal.classList.remove("visible");
+
 
     if (pendingOffer) {
         getSocket().emit("videoRejected", { chatId: pendingOffer.chatId });
@@ -194,21 +188,12 @@ function colgarLlamada() {
 
 // FIX: separar lógica de limpieza para reusar sin emitir evento
 function limpiarLlamada() {
-    if (peerConnection) {
-        peerConnection.close();
-        peerConnection = null;
-    }
-    if (localStream) {
-        localStream.getTracks().forEach(t => t.stop());
-        localStream = null;
-    }
-
+    if (peerConnection) { peerConnection.close(); peerConnection = null; }
+    if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
     localVideo.srcObject  = null;
     remoteVideo.srcObject = null;
     activeChatId = null;
-
-    videoModal.style.setProperty("display", "none", "important");
-    videoModal.style.display = "none";
+    videoModal.classList.remove("visible");   // ← clase, no style
     videoStatus.innerText = "Conectando...";
 }
 
@@ -253,10 +238,6 @@ function crearPeerConnection(chatId) {
     return pc;
 }
 
-// FIX Bug 2: forzar display:flex con setProperty para ignorar CSS externo
 function mostrarModal() {
-    videoModal.style.setProperty("display", "flex", "important");
-    videoModal.style.visibility = "visible";
-    videoModal.style.opacity    = "1";
-    videoModal.style.zIndex     = "9999";
+    videoModal.classList.add("visible");
 }
