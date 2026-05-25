@@ -14,7 +14,6 @@ window.socket = io(API_URL, {
 
 window.socket.on("connect", () => {
     console.log("✅ Socket conectado:", window.socket.id);
-    // Si ya había un chat abierto, rejoinearlo
     if (window.currentChat) {
         window.socket.emit("joinChat", window.currentChat);
     }
@@ -51,8 +50,8 @@ function renderizarChats(chats) {
     }
 
     chats.forEach(chat => {
-        const id     = chat.IdChat   ?? chat.id_chat ?? chat.id;
-        const nombre = chat.NombreChat ?? chat.nombre ?? "Chat";
+        const id     = chat.IdChat    ?? chat.id_chat ?? chat.id;
+        const nombre = chat.NombreChat ?? chat.nombre  ?? "Chat";
 
         const div = document.createElement("div");
         div.className = "chat-item" + (window.currentChat == id ? " active" : "");
@@ -68,7 +67,6 @@ function renderizarChats(chats) {
 
 // ── Abrir un chat ─────────────────────────────────────────────
 async function abrirChat(idChat, nombre) {
-    // Salir del chat anterior en el socket
     if (window.currentChat && window.currentChat !== idChat) {
         window.socket.emit("leaveChat", window.currentChat);
     }
@@ -76,30 +74,26 @@ async function abrirChat(idChat, nombre) {
     window.currentChat     = idChat;
     window.currentChatName = nombre;
 
-    document.getElementById("chatTitle").textContent = nombre;
-    document.getElementById("mensajeInput").disabled = false;
+    document.getElementById("chatTitle").textContent      = nombre;
+    document.getElementById("mensajeInput").disabled      = false;
+    document.getElementById("mensajeInput").placeholder   = "Escribe un mensaje...";
 
-    // Marcar activo en la lista
+    // Marcar chat activo en la lista
     document.querySelectorAll(".chat-item").forEach(el => el.classList.remove("active"));
-    const items = document.querySelectorAll(".chat-item");
-    items.forEach(el => {
+    document.querySelectorAll(".chat-item").forEach(el => {
         if (el.querySelector(".chat-name")?.textContent === nombre) el.classList.add("active");
     });
 
-    // Unirse al room del socket
     window.socket.emit("joinChat", idChat);
 
-    // Cargar mensajes históricos
     await cargarMensajes(idChat);
 
-    // Cargar tareas del sidebar
     if (typeof cargarTareasSidebar === "function") cargarTareasSidebar(idChat);
 
-    // Disparar evento para cerrar sidebar móvil
     document.dispatchEvent(new Event("chatSeleccionado"));
 }
 
-// ── Cargar mensajes ───────────────────────────────────────────
+// ── Cargar mensajes históricos ────────────────────────────────
 async function cargarMensajes(idChat) {
     const area = document.getElementById("messages");
     area.innerHTML = '<p style="color:#555; font-size:13px; text-align:center; margin-top:40px;">Cargando mensajes...</p>';
@@ -122,18 +116,16 @@ async function cargarMensajes(idChat) {
 
 // ── Renderizar un mensaje en el DOM ───────────────────────────
 function agregarMensajeDOM(msg, scroll = true) {
-    const area      = document.getElementById("messages");
-    const esPropio  = String(msg.IdUsuario ?? msg.id_usuario) === String(window.usuarioId);
-    const texto     = msg.Mensaje   ?? msg.mensaje   ?? "";
-    const alias     = msg.Alias     ?? msg.alias     ?? "Usuario";
-    const esCoach   = msg.EsCoach   ?? msg.es_coach  ?? false;
+    const area     = document.getElementById("messages");
+    const esPropio = String(msg.IdUsuario ?? msg.id_usuario) === String(window.usuarioId);
+    const texto    = msg.Mensaje  ?? msg.mensaje  ?? "";
+    const alias    = msg.Alias    ?? msg.alias    ?? "Usuario";
+    const esCoach  = msg.EsCoach  ?? msg.es_coach ?? false;
 
-    // Formatear hora
     const fecha = msg.FechaEnvio ?? msg.fecha_envio ?? null;
     let hora = "";
     if (fecha) {
-        const d = new Date(fecha);
-        hora = d.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" });
+        hora = new Date(fecha).toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" });
     }
 
     const div = document.createElement("div");
@@ -173,7 +165,6 @@ document.addEventListener("DOMContentLoaded", () => {
         const input   = document.getElementById("mensajeInput");
         const mensaje = input.value.trim();
         if (!mensaje || !window.currentChat) return;
-
         input.value = "";
 
         try {
@@ -185,13 +176,12 @@ document.addEventListener("DOMContentLoaded", () => {
                 },
                 body: JSON.stringify({ mensaje })
             });
-            // El mensaje llegará por socket (nuevoMensaje) para todos incluyendo el emisor
+            // El mensaje llega por socket "nuevoMensaje" para todos
         } catch (err) {
             console.error("Error enviando mensaje:", err);
         }
     });
 
-    // Cargar chats al iniciar
     cargarChats();
 });
 
@@ -201,12 +191,7 @@ window.socket.on("nuevoMensaje", (msg) => {
     agregarMensajeDOM(msg, true);
 });
 
-// ── Socket: alguien se unió / salió (opcional, para logs) ─────
-window.socket.on("usuarioUnido", (data) => {
-    console.log("Usuario unido al chat:", data);
-});
-
-// ── Tareas sidebar (stubs — implementa según tu API) ──────────
+// ── Tareas sidebar ────────────────────────────────────────────
 async function cargarTareasSidebar(idChat) {
     const lista = document.getElementById("sidebarTaskList");
     if (!lista) return;
@@ -216,7 +201,7 @@ async function cargarTareasSidebar(idChat) {
         const res  = await fetch(API_URL + "/api/tareas?id_chat=" + idChat, {
             headers: { "Authorization": "Bearer " + token }
         });
-        const data = await res.json();
+        const data   = await res.json();
         const tareas = Array.isArray(data) ? data : [];
 
         lista.innerHTML = "";
@@ -237,20 +222,19 @@ async function cargarTareasSidebar(idChat) {
 }
 
 function abrirModalTarea() {
-    const modal = document.getElementById("modalNuevaTarea");
-    if (modal) modal.style.display = "flex";
+    const m = document.getElementById("modalNuevaTarea");
+    if (m) m.style.display = "flex";
 }
 
 function cerrarModalTarea() {
-    const modal = document.getElementById("modalNuevaTarea");
-    if (modal) modal.style.display = "none";
+    const m = document.getElementById("modalNuevaTarea");
+    if (m) m.style.display = "none";
 }
 
 async function crearTareaManual() {
     const desc   = document.getElementById("nuevaTareaDesc")?.value.trim();
     const puntos = document.getElementById("nuevaTareaPuntos")?.value;
     const dias   = document.getElementById("nuevaTareaDias")?.value;
-
     if (!desc) return;
 
     try {
