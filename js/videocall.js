@@ -102,7 +102,13 @@ function crearPeerConnection(chatId) {
             remoteVideo.srcObject.addTrack(event.track);
         }
 
-        remoteVideo.play().catch(() => {});
+        remoteVideo.autoplay = true;
+remoteVideo.playsInline = true;
+remoteVideo.muted = false;
+
+remoteVideo.play().catch(err => {
+    console.warn("Autoplay bloqueado:", err);
+});
 
         setStatus("En llamada ✅");
     };
@@ -210,7 +216,6 @@ async function aceptarLlamada() {
 
     const { offer, chatId } = pendingOffer;
 
-    pendingCandidates = [];
 
     peerConnection = crearPeerConnection(chatId);
 
