@@ -36,6 +36,23 @@
             transition: border-color 0.15s;
         }
         .usuario-resultado.seleccionado { border-color: #5865f2; }
+        .tag-usuario {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            background: #5865f2;
+            border-radius: 20px;
+            font-size: 12px;
+            color: white;
+        }
+        .tag-usuario .tag-remove {
+            cursor: pointer;
+            font-weight: bold;
+            opacity: 0.8;
+            line-height: 1;
+        }
+        .tag-usuario .tag-remove:hover { opacity: 1; }
         .usuario-resultado .avatar {
             width: 32px; height: 32px; border-radius: 50%;
             background: #5865f2;
