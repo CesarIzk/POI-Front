@@ -42,7 +42,15 @@ async function obtenerStream() {
 
 // ─── Registrar eventos socket ─────────────────────────────
 // Se llama desde chat.js después de crear el socket
+let _videollamadaInicializada = false;
+
 function inicializarSocketVideollamada(socket) {
+    // Evitar registrar eventos duplicados si el socket reconecta
+    if (_videollamadaInicializada) {
+        console.log("⚠ Videollamada ya inicializada, omitiendo re-registro");
+        return;
+    }
+    _videollamadaInicializada = true;
     console.log("📡 Registrando eventos de videollamada en socket:", socket.id);
 
     socket.on("videoOffer", ({ chatId, offer, from }) => {
@@ -58,8 +66,13 @@ function inicializarSocketVideollamada(socket) {
     });
 
     socket.on("videoAnswer", async ({ answer }) => {
-        console.log("✅ videoAnswer recibido");
+        console.log("✅ videoAnswer recibido, estado:", peerConnection?.signalingState);
         if (!peerConnection) return;
+        // Solo procesar si estamos esperando una respuesta (have-local-offer)
+        if (peerConnection.signalingState !== "have-local-offer") {
+            console.warn("⚠ videoAnswer ignorado, estado incorrecto:", peerConnection.signalingState);
+            return;
+        }
         try {
             await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
             document.getElementById("videoStatus").innerText = "En llamada ✅";
@@ -228,19 +241,20 @@ function crearPeerConnection(chatId) {
             rv.srcObject.addTrack(track);
         }
 
-        // Autoplay con fallback manual
-        rv.play().catch(e => {
-            console.warn("autoplay bloqueado:", e.message);
-            // Mostrar botón para activar manualmente
-            if (!document.getElementById("btnPlay")) {
-                const btn = document.createElement("button");
-                btn.id = "btnPlay";
-                btn.innerText = "▶ Tap para ver video";
-                btn.style.cssText = "position:fixed;bottom:130px;left:50%;transform:translateX(-50%);z-index:1100;padding:12px 24px;background:#5865f2;color:white;border:none;border-radius:10px;font-size:15px;cursor:pointer;width:auto;min-height:unset;";
-                btn.onclick = () => { rv.play(); btn.remove(); };
-                document.body.appendChild(btn);
-            }
-        });
+        // Esperar a que el srcObject esté listo antes de reproducir
+        rv.onloadedmetadata = () => {
+            rv.play().catch(e => {
+                console.warn("autoplay bloqueado:", e.message);
+                if (!document.getElementById("btnPlay")) {
+                    const btn = document.createElement("button");
+                    btn.id = "btnPlay";
+                    btn.innerText = "▶ Tap para ver video";
+                    btn.style.cssText = "position:fixed;bottom:130px;left:50%;transform:translateX(-50%);z-index:1100;padding:12px 24px;background:#5865f2;color:white;border:none;border-radius:10px;font-size:15px;cursor:pointer;width:auto;min-height:unset;";
+                    btn.onclick = () => { rv.play(); btn.remove(); };
+                    document.body.appendChild(btn);
+                }
+            });
+        };
 
         if (track.kind === "video") {
             document.getElementById("videoStatus").innerText = "En llamada ✅";
