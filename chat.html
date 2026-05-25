@@ -53,6 +53,9 @@
 </head>
 <body class="chat-layout">
 
+    <!-- Overlay para cerrar sidebar en móvil -->
+    <div class="sidebar-overlay" id="sidebarOverlay" onclick="cerrarSidebar()"></div>
+
     <nav class="side-menu">
         <div class="menu-item"><a href="home.html">🏠</a></div>
         <div class="menu-item active">💬</div>
@@ -116,6 +119,7 @@
 
     <main class="chat-window">
         <header class="chat-header">
+            <button id="btnAbrirSidebar" onclick="abrirSidebar()" title="Ver chats">☰</button>
             <h3 id="chatTitle">Selecciona un chat</h3>
             <div class="header-actions">
                 <span style="cursor:pointer;" onclick="iniciarLlamada()">🎥</span>
@@ -193,5 +197,18 @@
 
     <script src="js/chat-modal.js"></script>
 
+
+    <script>
+        function abrirSidebar() {
+            document.querySelector(".chats-sidebar").classList.add("open");
+            document.getElementById("sidebarOverlay").classList.add("visible");
+        }
+        function cerrarSidebar() {
+            document.querySelector(".chats-sidebar").classList.remove("open");
+            document.getElementById("sidebarOverlay").classList.remove("visible");
+        }
+        // Cerrar sidebar al seleccionar un chat en móvil
+        document.addEventListener("chatSeleccionado", cerrarSidebar);
+    </script>
 </body>
 </html>
