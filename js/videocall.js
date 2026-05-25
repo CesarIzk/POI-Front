@@ -186,6 +186,34 @@ function colgarLlamada() {
     limpiarLlamada();
 }
 
+
+async function obtenerStream() {
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        console.log("✅ Stream obtenido:", stream.getTracks().map(t => t.kind + ":" + t.label));
+        return stream;
+    } catch (e) {
+        console.warn("⚠ video+audio falló:", e.name, e.message);
+    }
+
+    // Intentar video solo (sin audio) para aislar cuál falla
+    try {
+        const streamSoloVideo = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        console.log("✅ Solo video funciona");
+        streamSoloVideo.getTracks().forEach(t => t.stop());
+    } catch (e) {
+        console.warn("⚠ solo video también falla:", e.name, e.message);
+    }
+
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
+        console.log("⚠ Fallback: solo audio");
+        return stream;
+    } catch (e) {
+        throw new Error("Sin acceso a cámara ni micrófono: " + e.message);
+    }
+}
+
 function limpiarLlamada() {
     if (peerConnection) {
         peerConnection.close();
@@ -280,3 +308,9 @@ function crearPeerConnection(chatId) {
 function mostrarModal() {
     videoModal.classList.add("visible");
 }
+// Agregar al final de videocall.js
+window.addEventListener("beforeunload", () => {
+    if (localStream) {
+        localStream.getTracks().forEach(t => t.stop());
+    }
+});
