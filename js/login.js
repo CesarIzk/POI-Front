@@ -9,13 +9,21 @@ document.getElementById("loginForm").addEventListener("submit", async (e) => {
     const mensaje = document.getElementById("mensaje");
 
     try {
-        const res = await fetch(`${API_URL}/api/auth/login`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email, password })
-        });
+      const res = await fetch(`${API_URL}/api/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password })
+});
 
-        const data = await res.json();
+// ← ADD THIS before res.json()
+if (!res.ok) {
+    const text = await res.text();
+    console.error("Server error response:", text);
+    mensaje.innerText = "Error del servidor (ver consola)";
+    return;
+}
+
+const data = await res.json();
 
         if (data.success) {
             // Guardar token y datos del usuario en localStorage
