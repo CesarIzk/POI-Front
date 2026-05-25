@@ -1,11 +1,26 @@
 // ─── WebRTC Video Call ──────────────────────────────────────
-// Sin APIs externas — solo STUN de Google (funciona en misma red o con IPv6)
+// STUN (descubrir IP pública) + TURN públicos (relay entre redes distintas)
 const STUN_SERVERS = {
     iceServers: [
+        // STUN de Google
         { urls: "stun:stun.l.google.com:19302" },
         { urls: "stun:stun1.l.google.com:19302" },
-        { urls: "stun:stun2.l.google.com:19302" },
-        { urls: "stun:stun3.l.google.com:19302" }
+        // TURN público de Open Relay (gratuito, sin registro)
+        {
+            urls: "turn:openrelay.metered.ca:80",
+            username: "openrelayproject",
+            credential: "openrelayproject"
+        },
+        {
+            urls: "turn:openrelay.metered.ca:443",
+            username: "openrelayproject",
+            credential: "openrelayproject"
+        },
+        {
+            urls: "turns:openrelay.metered.ca:443",
+            username: "openrelayproject",
+            credential: "openrelayproject"
+        }
     ]
 };
 
