@@ -207,7 +207,6 @@ function limpiarLlamada() {
     if (videoModal) videoModal.classList.remove("visible");
     if (videoStatus) videoStatus.innerText = "Conectando...";
 
-    // Limpiar botón de activar audio si existe
     const btn = document.getElementById("btnActivarAudio");
     if (btn) btn.remove();
 }
@@ -231,31 +230,39 @@ function toggleCam() {
 function crearPeerConnection(chatId) {
     const pc = new RTCPeerConnection(ICE_SERVERS);
 
-    // Crear stream remoto vacío y asignarlo YA al video
+    // FIX: NO asignar srcObject vacío aquí — esperar a que lleguen los tracks
     const remoteStream = new MediaStream();
-    remoteVideo.srcObject = remoteStream;
 
-    pc.ontrack = ({ track }) => {
+    pc.ontrack = ({ track, streams }) => {
         console.log("🎬 ontrack recibido, kind:", track.kind);
-        remoteStream.addTrack(track);
+
+        // FIX 1: Usar el stream que viene con el track si existe
+        // Esto garantiza que audio y video están en el mismo stream
+        if (streams && streams[0]) {
+            if (remoteVideo.srcObject !== streams[0]) {
+                remoteVideo.srcObject = streams[0];
+                console.log("✅ srcObject asignado desde streams[0]");
+            }
+        } else {
+            // Fallback: construir stream manualmente
+            remoteStream.addTrack(track);
+            remoteVideo.srcObject = remoteStream;
+        }
+
+        // FIX 2: Llamar play() aquí, después de asignar srcObject
+        // El navegador puede bloquear autoplay; mostramos botón como fallback
+        remoteVideo.play().then(() => {
+            remoteVideo.muted = false;
+            console.log("▶ remoteVideo.play() OK");
+        }).catch(e => {
+            console.warn("⚠ play() bloqueado (autoplay policy):", e.message);
+            mostrarBotonActivarAudio();
+        });
 
         if (track.kind === "video") {
             videoStatus.innerText = "En llamada ✅";
-
-            // Esperar canplay antes de intentar play()
-            // evita "interrupted by new load request"
-            remoteVideo.addEventListener("canplay", function handler() {
-                remoteVideo.removeEventListener("canplay", handler);
-                remoteVideo.play().then(() => {
-                    remoteVideo.muted = false;
-                }).catch(e => {
-                    console.warn("play() falló en canplay:", e.message);
-                    mostrarBotonActivarAudio();
-                });
-            });
         }
-
-        if (track.kind === "audio" && !remoteStream.getVideoTracks().length) {
+        if (track.kind === "audio" && !(streams?.[0]?.getVideoTracks().length)) {
             videoStatus.innerText = "En llamada (solo audio) ✅";
         }
     };
