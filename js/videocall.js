@@ -21,18 +21,24 @@ function initDOM() {
 }
 
 async function obtenerIceServers() {
-    try {
-        const res = await fetch(`${API_URL}/api/turn-credentials`, {
-            headers: { Authorization: "Bearer " + localStorage.getItem("token") }
-        });
-        const data = await res.json();
-        // Validar que cada server tenga urls válido
-        const valid = data.iceServers.filter(s => s.urls && !String(s.urls).includes("undefined"));
-        return valid.length > 0 ? valid : fallbackIce();
-    } catch (e) {
-        console.warn("⚠ No se pudo obtener TURN:", e.message);
-        return fallbackIce();
-    }
+    return [
+        { urls: "stun:stun.l.google.com:19302" },
+        {
+            urls: "turn:turn.anyfirewall.com:443?transport=tcp",
+            username: "webrtc",
+            credential: "webrtc"
+        },
+        {
+            urls: "turn:relay.backups.cz",
+            username: "webrtc",
+            credential: "webrtc"
+        },
+        {
+            urls: "turn:relay.backups.cz:443?transport=tcp",
+            username: "webrtc",
+            credential: "webrtc"
+        }
+    ];
 }
 
 function fallbackIce() {
