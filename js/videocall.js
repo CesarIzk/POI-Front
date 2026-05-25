@@ -186,17 +186,27 @@ function colgarLlamada() {
     limpiarLlamada();
 }
 
-// FIX: separar lógica de limpieza para reusar sin emitir evento
 function limpiarLlamada() {
-    if (peerConnection) { peerConnection.close(); peerConnection = null; }
-    if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
-    localVideo.srcObject  = null;
-    remoteVideo.srcObject = null;
+    if (peerConnection) {
+        peerConnection.close();
+        peerConnection = null;
+    }
+    if (localStream) {
+        localStream.getTracks().forEach(t => t.stop());
+        localStream = null;
+    }
+
+    // FIX: limpiar srcObject correctamente
+    if (remoteVideo.srcObject) {
+        remoteVideo.srcObject.getTracks().forEach(t => t.stop());
+        remoteVideo.srcObject = null;
+    }
+    localVideo.srcObject = null;
     activeChatId = null;
-    videoModal.classList.remove("visible");   // ← clase, no style
+
+    videoModal.classList.remove("visible");
     videoStatus.innerText = "Conectando...";
 }
-
 // ─── Toggle mic / cam ────────────────────────────────────────
 function toggleMic() {
     if (!localStream) return;
@@ -212,10 +222,32 @@ function toggleCam() {
     document.getElementById("btnToggleCam").style.background = camActiva ? "#444" : "#e74c3c";
 }
 
-// ─── Helpers ─────────────────────────────────────────────────
-// FIX Bug 3: recibe chatId como parámetro en lugar de leer currentChat
 function crearPeerConnection(chatId) {
     const pc = new RTCPeerConnection(ICE_SERVERS);
+
+    // ── FIX PRINCIPAL ──────────────────────────────────────────
+    // Crear un MediaStream vacío y asignarlo YA al video.
+    // Así el elemento siempre tiene un srcObject válido desde el inicio.
+    // Cuando llegan los tracks los agregamos uno a uno — esto funciona
+    // en todos los browsers incluyendo Safari iOS donde streams[] llega vacío.
+    const remoteStream = new MediaStream();
+    remoteVideo.srcObject = remoteStream;
+
+    pc.ontrack = ({ track, streams }) => {
+        console.log("🎬 ontrack recibido, kind:", track.kind);
+
+        // Agregar el track al stream ya asignado
+        remoteStream.addTrack(track);
+
+        // Si el video está pausado (autoplay bloqueado), forzar play
+        // Esto pasa especialmente en Chrome móvil
+        remoteVideo.play().catch(err => {
+            console.warn("▶ autoplay bloqueado, esperando interacción:", err.message);
+        });
+
+        videoStatus.innerText = "En llamada ✅";
+    };
+    // ──────────────────────────────────────────────────────────
 
     pc.onicecandidate = ({ candidate }) => {
         if (candidate && chatId) {
@@ -223,16 +255,23 @@ function crearPeerConnection(chatId) {
         }
     };
 
-    pc.ontrack = ({ streams }) => {
-        remoteVideo.srcObject = streams[0];
-        videoStatus.innerText = "En llamada ✅";
-    };
-
     pc.onconnectionstatechange = () => {
-        console.log("Estado conexión WebRTC:", pc.connectionState);
+        console.log("🔗 WebRTC state:", pc.connectionState);
+        if (pc.connectionState === "connected") {
+            videoStatus.innerText = "En llamada ✅";
+        }
         if (pc.connectionState === "disconnected" || pc.connectionState === "failed") {
             videoStatus.innerText = "Conexión perdida ❌";
+            setTimeout(() => colgarLlamada(), 3000);
         }
+    };
+
+    pc.onicegatheringstatechange = () => {
+        console.log("🧊 ICE gathering:", pc.iceGatheringState);
+    };
+
+    pc.onsignalingstatechange = () => {
+        console.log("📡 Signaling state:", pc.signalingState);
     };
 
     return pc;
