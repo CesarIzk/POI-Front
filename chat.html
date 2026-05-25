@@ -43,25 +43,6 @@
             font-weight: bold; font-size: 14px;
         }
 
-        /* Tags de usuarios seleccionados */
-        .tag-usuario {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            padding: 4px 10px;
-            background: #5865f2;
-            border-radius: 20px;
-            font-size: 12px;
-            color: white;
-        }
-        .tag-usuario .tag-remove {
-            cursor: pointer;
-            font-weight: bold;
-            opacity: 0.8;
-            line-height: 1;
-        }
-        .tag-usuario .tag-remove:hover { opacity: 1; }
-
         /* ── Info sidebar (derecho) — tareas ── */
         .info-sidebar {
             width: 220px;
@@ -246,16 +227,17 @@
                 oninput="validarFormularioChat()">
             <div style="text-align:right; font-size:11px; color:#666; margin-bottom:14px;"><span id="contadorNombre">0</span>/30</div>
 
-            <label style="font-size:12px; color:#aaa; display:block; margin-bottom:4px;">Agregar usuarios (opcional)</label>
+            <label style="font-size:12px; color:#aaa; display:block; margin-bottom:4px;">Agregar usuario (opcional)</label>
             <input type="text" id="buscarAliasInput" placeholder="Buscar por alias o nombre..."
                 style="width:100%; padding:10px 12px; border-radius:8px; border:1px solid #555; background:#12121f; color:white; font-size:14px; box-sizing:border-box; margin-bottom:10px;"
                 oninput="buscarUsuario()">
 
-            <div id="resultadoBusqueda" style="margin-bottom:10px; min-height:36px; max-height:180px; overflow-y:auto; font-size:14px; color:#ccc; display:flex; flex-direction:column; gap:6px;"></div>
+            <div id="resultadoBusqueda" style="margin-bottom:14px; min-height:36px; max-height:220px; overflow-y:auto; font-size:14px; color:#ccc; display:flex; flex-direction:column; gap:6px;"></div>
 
-            <!-- FIX: contenedor de tags — requerido por chat-modal.js -->
-            <div id="usuariosSeleccionadosContainer"
-                 style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:14px; min-height:0;"></div>
+            <div id="usuarioSeleccionadoTag" style="display:none; margin-bottom:14px; padding:6px 10px; background:#2a2a3e; border-radius:8px; font-size:13px; color:#ccc; align-items:center; justify-content:space-between;">
+                <span id="usuarioSeleccionadoNombre"></span>
+                <span onclick="deseleccionarUsuario()" style="cursor:pointer; color:#e74c3c; font-weight:bold; margin-left:10px;">✕</span>
+            </div>
 
             <div id="mensajeErrorChat" style="font-size:12px; color:#e74c3c; margin-bottom:10px; display:none;"></div>
 
@@ -306,9 +288,7 @@
 
         <footer class="input-area">
             <form id="chatForm">
-                <input type="text" id="mensajeInput"
-                    placeholder="Selecciona un chat para empezar..."
-                    autocomplete="off" disabled>
+                <input type="text" id="mensajeInput" placeholder="Escribe un mensaje o pide una tarea al coach..." autocomplete="off">
                 <button type="submit" class="btn-send" title="Enviar">➤</button>
             </form>
         </footer>
@@ -387,7 +367,6 @@
         }
     </script>
 
-    <!-- Orden correcto: socket.io → chat.js (crea window.socket) → videocall.js → chat-modal.js -->
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
     <script src="js/chat.js"></script>
     <script src="js/videocall.js"></script>
